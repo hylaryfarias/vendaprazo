@@ -1,48 +1,57 @@
 <title>Controle B2B</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
 <style>
-/* Layout: régua de mês no topo, seis big numbers, depois os dois livros (mensal e semanal) como tabelas operáveis. */
+/* Manual de Marca Grupo Ragga v2026.09.30: Instrument Sans em tudo (Dotties Vanilla só no H1, quando o arquivo da fonte estiver disponível),
+   neutros do manual e a cor da Ragga Restaurantes (Sal #B81D22).
+   Status nas cores dos temperos: a receber Louro, recebido Alecrim, vencido Pimenta, parcial Alho, permuta Manjericão.
+   Layout: régua de mês no topo, seis big numbers, depois os dois livros (mensal e semanal) como tabelas operáveis. */
 :root{
-  --bg:#F3F5F4; --surface:#FFFFFF; --sunk:#E9EDEB; --line:#D6DDDA;
-  --fg:#15211E; --muted:#5B6964; --accent:#0E5E52; --accent-fg:#FFFFFF; --accent-soft:#D9ECE7;
-  --ok:#1F7A3E; --ok-soft:#DCF0E2; --due:#2B5C9E; --due-soft:#DFE8F5;
-  --late:#B3261E; --late-soft:#F8E0DD; --part:#9A6200; --part-soft:#F7EBD3;
-  --swap:#6A5A8C; --swap-soft:#E9E4F2;
-  --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
-  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --bg:#F6F3EC; --surface:#FFFDF8; --sunk:#EFEAE0; --line:rgba(26,20,16,.13);
+  --fg:#1A1410; --muted:#6E655C; --accent:#B81D22; --accent-fg:#FFFFFF; --accent-soft:#F6DEDC;
+  --holding:#2D204E;
+  --ok:#35632A; --ok-soft:#E3ECDD; --due:#2B4899; --due-soft:#E1E6F3;
+  --late:#C2531A; --late-soft:#FBE4D6; --part:#9A6E00; --part-soft:#F5EACB;
+  --swap:#8A2241; --swap-soft:#F1E0E5;
+  --f-display:"Dotties Vanilla","Instrument Sans",system-ui,sans-serif;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"Instrument Sans",system-ui,sans-serif;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0F1614; --surface:#17201E; --sunk:#1E2926; --line:#2C3935;
-  --fg:#E4ECE9; --muted:#97A7A1; --accent:#5FC3AE; --accent-fg:#0B1513; --accent-soft:#183A33;
-  --ok:#6FD08F; --ok-soft:#183324; --due:#8DB5EE; --due-soft:#1B2A40;
-  --late:#F28B82; --late-soft:#3A1D1B; --part:#E8B860; --part-soft:#36290F;
-  --swap:#B9A8DE; --swap-soft:#2A2438; color-scheme:dark}}
+  --bg:#0E0C0A; --surface:#1C1814; --sunk:#25201B; --line:rgba(240,233,221,.13);
+  --fg:#F0E9DD; --muted:#A39A8E; --accent:#E8615F; --accent-fg:#0E0C0A; --accent-soft:#3A1A18;
+  --holding:#B7A8E0;
+  --ok:#8CC27C; --ok-soft:#1D2A18; --due:#8FA6E6; --due-soft:#1E2742;
+  --late:#F39A5E; --late-soft:#3A2414; --part:#E3BC55; --part-soft:#33290F;
+  --swap:#E08AA6; --swap-soft:#35192A; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0F1614; --surface:#17201E; --sunk:#1E2926; --line:#2C3935;
-  --fg:#E4ECE9; --muted:#97A7A1; --accent:#5FC3AE; --accent-fg:#0B1513; --accent-soft:#183A33;
-  --ok:#6FD08F; --ok-soft:#183324; --due:#8DB5EE; --due-soft:#1B2A40;
-  --late:#F28B82; --late-soft:#3A1D1B; --part:#E8B860; --part-soft:#36290F;
-  --swap:#B9A8DE; --swap-soft:#2A2438; color-scheme:dark}
+  --bg:#0E0C0A; --surface:#1C1814; --sunk:#25201B; --line:rgba(240,233,221,.13);
+  --fg:#F0E9DD; --muted:#A39A8E; --accent:#E8615F; --accent-fg:#0E0C0A; --accent-soft:#3A1A18;
+  --holding:#B7A8E0;
+  --ok:#8CC27C; --ok-soft:#1D2A18; --due:#8FA6E6; --due-soft:#1E2742;
+  --late:#F39A5E; --late-soft:#3A2414; --part:#E3BC55; --part-soft:#33290F;
+  --swap:#E08AA6; --swap-soft:#35192A; color-scheme:dark}
 
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.sign{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:14px}
 .wrap{max-width:1240px;margin:0 auto;padding-inline:20px;padding-block:20px 48px;display:flex;flex-direction:column;gap:22px}
 @media (max-width:520px){.wrap{padding-inline:16px}}
 .num{font-variant-numeric:tabular-nums}
 
 header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
-.brand .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
-.brand h1{font-family:var(--f-display);font-weight:800;font-size:26px;margin:2px 0 0;letter-spacing:-.01em}
+.brand .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:8px}
+.brand .eyebrow b{color:var(--accent);font-weight:600}
+.brand .eyebrow i{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block}
+.brand h1{font-family:var(--f-display);font-weight:600;font-size:28px;margin:2px 0 0;letter-spacing:-.02em;line-height:1.1}
 .monthbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .mnav{display:flex;align-items:stretch;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .mnav button{border:0;background:transparent;color:var(--fg);width:38px;font-size:18px;cursor:pointer}
 .mnav button:disabled{color:var(--line);cursor:default}
 .mnav button:not(:disabled):hover{background:var(--sunk)}
 .mnav .cur{padding:6px 14px;border-inline:1px solid var(--line);min-width:200px;text-align:center}
-.mnav .cur select{font:inherit;font-family:var(--f-display);font-weight:700;font-size:16px;color:var(--fg);background:transparent;border:0;text-align:center;cursor:pointer;text-transform:capitalize}
+.mnav .cur select{font:inherit;font-family:var(--f-body);font-weight:600;font-size:16px;color:var(--fg);background:transparent;border:0;text-align:center;cursor:pointer;text-transform:capitalize}
 .mnav .cur small{display:block;color:var(--muted);font-size:11.5px}
 .btn{font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:8px 14px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--sunk)}
@@ -59,7 +68,7 @@ header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:spac
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .card .lbl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px}
 .card .lbl i{width:8px;height:8px;border-radius:2px;display:inline-block;background:var(--muted)}
-.card .val{font-family:var(--f-display);font-weight:700;font-size:clamp(19px,2.2vw,25px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .val{font-family:var(--f-body);font-weight:600;font-size:clamp(19px,2.2vw,25px);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .sub{font-size:12px;color:var(--muted)}
 .card.ok .lbl i{background:var(--ok)} .card.ok .val{color:var(--ok)}
 .card.due .lbl i{background:var(--due)}
@@ -73,12 +82,12 @@ header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:spac
 
 section.book{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .bookhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
-.bookhead h2{font-family:var(--f-display);font-size:17px;font-weight:700;margin:0;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.bookhead h2{font-family:var(--f-body);font-size:17px;font-weight:600;letter-spacing:-.01em;margin:0;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .bookhead h2 small{font-family:var(--f-body);font-weight:500;font-size:12.5px;color:var(--muted)}
 .tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:3px 10px;cursor:pointer}
-.chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 input.search{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;padding:6px 10px;width:190px;max-width:100%}
 
 .tablewrap{overflow-x:auto}
@@ -87,15 +96,15 @@ th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);verti
 th{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--sunk);white-space:nowrap}
 td.r,th.r{text-align:right}
 td .co{font-weight:600}
-td .meta{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+td .meta{font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--muted)}
 td .note{font-size:12px;color:var(--muted)}
 .lojas{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
-.loja{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-family:var(--f-mono);font-size:12px}
+.loja{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;font-variant-numeric:tabular-nums}
 .loja img{height:16px;width:auto;display:block}
 .loja.txt{font-family:var(--f-body);font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .marks{display:flex;align-items:center;gap:14px;margin-top:8px}
 .marks img{height:18px;width:auto;display:block}
-td.money{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.money{font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
 td.money .rest{display:block;font-size:11px;color:var(--part)}
 tbody tr:hover{background:color-mix(in srgb,var(--sunk) 55%,transparent)}
 tbody tr.is-late td:first-child{box-shadow:inset 3px 0 0 var(--late)}
@@ -122,7 +131,7 @@ tfoot td{font-weight:700;background:var(--sunk);border-bottom:0}
 dialog{border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);padding:0;width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 40px)}
 dialog::backdrop{background:rgba(10,18,16,.45)}
 dialog form{display:flex;flex-direction:column;gap:14px;padding:20px}
-dialog h3{font-family:var(--f-display);margin:0;font-size:18px}
+dialog h3{font-family:var(--f-body);font-weight:600;margin:0;font-size:18px}
 dialog .who{color:var(--muted);font-size:13px;margin-top:-8px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:480px){.grid2{grid-template-columns:1fr}}
@@ -142,7 +151,7 @@ dialog .who{color:var(--muted);font-size:13px;margin-top:-8px}
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <div class="eyebrow">Recebimentos B2B · venda a prazo</div>
+      <div class="eyebrow"><i></i><b>Ragga Restaurantes</b> · recebimentos B2B</div>
       <h1>Controle B2B</h1>
       <div class="marks" aria-label="Marcas do grupo">
         <img src="marcas/biggs.png" alt="Bigg's"><img src="marcas/isaias.png" alt="Isaias"><img src="marcas/robs.png" alt="Rob's"><img src="marcas/mapoli.png" alt="Mapoli">
@@ -173,6 +182,7 @@ dialog .who{color:var(--muted);font-size:13px;margin-top:-8px}
       <section class="book" id="book-semanal"></section>
     </div>
   </div>
+  <footer class="sign"><span>Marketing abre. Venda reina. Caixa canta.</span><span>Grupo Ragga · Londrina–PR</span></footer>
 </div>
 
 <!-- Baixa de pagamento -->
@@ -370,7 +380,7 @@ dialog .who{color:var(--muted);font-size:13px;margin-top:-8px}
     $('#cards').innerHTML = [
       card('', 'Total mensal', money(totMensal), `${mensal.length} empresas${permuta ? ' · ' + money(permuta) + ' em permuta' : ''}`),
       card('', 'Total semanal', money(totSemanal), `${semanal.length} lançamentos`),
-      card('ok', 'Total recebido', money(rec), `${nRec} baixados · mensal + semanal`),
+      card('ok', 'Total recebido', money(rec), `${nRec} ${nRec === 1 ? 'baixado' : 'baixados'} · mensal + semanal`),
       card('due', 'A receber', money(aReceber), `${nAberto} em aberto`),
       card('late', 'Vencido', money(vencido), nVenc ? `${nVenc} passaram da previsão` : 'nada vencido'),
       card('pct', '% recebido', pctFmt, `de ${money(base)} a cobrar`),
