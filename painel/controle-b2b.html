@@ -543,17 +543,14 @@
       return `${nome(l)}: ${brl(saldo(l))}${parcial}`;
     };
     const tag = l => !l.previsao ? '' : l.previsao === hoje ? ' _(hoje)_' : l.previsao < hoje ? ' _(vencido)_' : '';
-    // Empresas com o mesmo Grupo (ex.: LOJAS) saem juntas, com subtotal; as demais vêm depois.
+    // Empresas com Grupo (ex.: LOJAS) viram uma linha só, com o total; as demais vêm uma a uma.
     const emit = (a, fmt) => {
       const grupos = [...new Set(a.map(l => l.grupo).filter(Boolean))].sort();
       grupos.forEach(g => {
         const gs = a.filter(l => l.grupo === g);
-        out.push(`*${g} · ${brl(sum(gs))}* (${gs.length})`);
-        gs.forEach(l => out.push(`- ${fmt(l)}`));
+        out.push(`- *${g}* (${gs.length} empresas): ${brl(sum(gs))}`);
       });
-      const resto = a.filter(l => !l.grupo);
-      if (grupos.length && resto.length) out.push(`*Demais empresas · ${brl(sum(resto))}* (${resto.length})`);
-      resto.forEach(l => out.push(`- ${fmt(l)}`));
+      a.filter(l => !l.grupo).forEach(l => out.push(`- ${fmt(l)}`));
     };
 
     const out = [`*B2B · consumo de ${monthName(state.cur)} → recebimento em ${MESES[+rec.slice(5, 7) - 1]}*`, ''];
