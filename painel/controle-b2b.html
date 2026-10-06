@@ -92,6 +92,18 @@
   table{border-collapse:collapse;width:100%;min-width:940px}
   th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
   th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:600;background:var(--sunk);white-space:nowrap}
+  .ordena{font:inherit;font-size:inherit;letter-spacing:inherit;text-transform:inherit;font-weight:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;display:inline-flex;gap:5px;align-items:center;white-space:nowrap}
+  .ordena span{font-size:9px;color:var(--line-2)}
+  .ordena:hover,.ordena.on{color:var(--brand)}
+  .ordena.on span{color:var(--brand)}
+  th.r .ordena{flex-direction:row}
+  tr.frow th{padding-top:0;padding-bottom:9px}
+  .cf{font:inherit;font-size:12px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:6px;padding:4px 7px;width:100%;min-width:70px}
+  .cf.r{text-align:right}
+  select.cf{min-width:104px}
+  .cf.on{border-color:var(--brand);background:var(--brand-soft)}
+  .cf::placeholder{color:var(--ink-3);font-weight:400}
+  th .limpar{font-size:11.5px;text-transform:none;letter-spacing:0}
   td.r,th.r{text-align:right}
   td .co{font-weight:700;font-size:13.5px;text-transform:uppercase}
   td .meta{font-size:11.5px;color:var(--ink-3)}
@@ -291,8 +303,39 @@
   const saldo = l => isPermuta(l) ? 0 : Math.max((Number(l.valor) || 0) - recebido(l), 0);
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, gotMonths: false, gotLancs: false };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false };
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
+  try { const t = JSON.parse(localStorage.getItem('b2b.cols') || 'null'); if (t) { Object.assign(state.sort, t.sort); Object.assign(state.colf, t.colf); } } catch {}
+  const saveCols = () => { try { localStorage.setItem('b2b.cols', JSON.stringify({ sort: state.sort, colf: state.colf })); } catch {} };
+
+  // Colunas: como ordenar (sort) e como filtrar (kind: texto livre, lista de valores ou número com > <).
+  const ST_ORDER = { vencido: 0, aberto: 1, parcial: 2, recebido: 3, permuta: 4 };
+  const COLS = [
+    { k: 'empresa', t: 'Empresa', kind: 'text', sort: l => String(l.empresa || ''), txt: l => `${l.empresa} ${l.cnpj} ${l.tag}` },
+    { k: 'loja', t: 'Loja', kind: 'list', sort: l => String(l.loja || ''), val: l => l.loja || '—' },
+    { k: 'valor', t: 'Valor', kind: 'num', r: true, sort: l => Number(l.valor) || 0 },
+    { k: 'forma', t: 'Forma', kind: 'list', sort: l => String(l.forma || ''), val: l => l.forma || '—' },
+    { k: 'previsao', t: 'Previsão', kind: 'list', sort: l => l.previsao || ('~' + (l.previsaoNota || '')), val: l => l.previsao ? fmtDate(l.previsao) : (l.previsaoNota || '—') },
+    { k: 'obs', t: 'Observação', kind: 'text', sort: l => String(l.obs || ''), txt: l => l.obs || '' },
+    { k: 'recebido', t: 'Recebido', kind: 'num', r: true, sort: l => l.dataPagamento ? recebido(l) : -1, num: l => recebido(l), txt: l => l.dataPagamento ? fmtDate(l.dataPagamento) : '' },
+    { k: 'status', t: 'Status', kind: 'list', sort: l => ST_ORDER[statusOf(l)], val: l => STATUS[statusOf(l)].label },
+  ];
+  // Filtro numérico: "> 1000", "<=500", "1000-3000" ou parte do valor ("3.755").
+  function numMatch(n, q) {
+    const s = q.replace(/\s/g, '');
+    let m = s.match(/^(>=|<=|>|<|=)?([\d.,]+)$/);
+    if (m && m[1]) { const v = parseMoney(m[2]); return m[1] === '>' ? n > v : m[1] === '<' ? n < v : m[1] === '>=' ? n >= v : m[1] === '<=' ? n <= v : Math.abs(n - v) < 0.005; }
+    m = s.match(/^([\d.,]+)-([\d.,]+)$/);
+    if (m) return n >= parseMoney(m[1]) && n <= parseMoney(m[2]);
+    return NUMF.format(n).includes(q.trim()) || String(n).includes(q.trim());
+  }
+  const NUMF = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function colMatch(c, l, v) {
+    if (!v) return true;
+    if (c.kind === 'list') return c.val(l) === v;
+    if (c.kind === 'num') return numMatch(c.num ? c.num(l) : c.sort(l), v) || (c.txt ? c.txt(l).includes(v.trim()) : false);
+    return c.txt(l).toLowerCase().includes(v.trim().toLowerCase());
+  }
   try { state.cur = localStorage.getItem('b2b.month') || null; } catch {}
 
   function toast(msg) {
@@ -390,19 +433,37 @@
   function renderBook(bloco, title, all) {
     const el = $('#book-' + bloco);
     const f = state.filter[bloco], q = state.q[bloco].trim().toLowerCase();
+    const cf = state.colf[bloco] || {}, so = state.sort[bloco];
     const rows = all.filter(l => {
       const s = statusOf(l);
       if (f !== 'todos' && !(f === s || (f === 'aberto' && s === 'parcial'))) return false;
       if (q && !`${l.empresa} ${l.cnpj} ${l.loja} ${l.obs}`.toLowerCase().includes(q)) return false;
-      return true;
+      return COLS.every(c => colMatch(c, l, cf[c.k]));
     });
+    if (so) {
+      const c = COLS.find(x => x.k === so.k);
+      if (c) rows.sort((a, b) => { const x = c.sort(a), y = c.sort(b); const r = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'pt-BR', { numeric: true }); return so.dir === 'desc' ? -r : r; });
+    }
+    const nColF = Object.values(cf).filter(Boolean).length;
+    const filtrado = f !== 'todos' || q || nColF;
+    const opts = c => [...new Set(all.map(c.val))].sort((a, b) => c.k === 'previsao' ? String(a.split('/').reverse().join('')).localeCompare(b.split('/').reverse().join('')) : a.localeCompare(b, 'pt-BR', { numeric: true }));
+    const thHead = COLS.map(c => {
+      const on = so && so.k === c.k, arrow = on ? (so.dir === 'asc' ? '▲' : '▼') : '↕';
+      return `<th class="${c.r ? 'r' : ''}" aria-sort="${on ? (so.dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button type="button" class="ordena${on ? ' on' : ''}" data-sort="${c.k}" data-bloco="${bloco}">${c.t}<span aria-hidden="true">${arrow}</span></button></th>`;
+    }).join('');
+    const thFilt = COLS.map(c => {
+      const v = cf[c.k] || '', id = `cf-${bloco}-${c.k}`;
+      if (c.kind === 'list') return `<th class="fcell"><select class="cf${v ? ' on' : ''}" id="${id}" data-colf="${c.k}" data-bloco="${bloco}" aria-label="Filtrar ${c.t}"><option value="">todos</option>${opts(c).map(o => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select></th>`;
+      return `<th class="fcell"><input class="cf${v ? ' on' : ''}${c.r ? ' r' : ''}" id="${id}" data-colf="${c.k}" data-bloco="${bloco}" type="search" value="${esc(v)}" placeholder="${c.kind === 'num' ? '> 1000' : 'filtrar'}" aria-label="Filtrar ${c.t}"></th>`;
+    }).join('');
     const total = all.reduce((s, l) => s + (Number(l.valor) || 0), 0);
     const counts = {};
     all.forEach(l => { const s = statusOf(l); counts[s] = (counts[s] || 0) + 1; });
     const chips = [['todos', 'Todos', all.length], ['aberto', 'A receber', (counts.aberto || 0) + (counts.parcial || 0)], ['vencido', 'Vencido', counts.vencido || 0], ['recebido', 'Recebido', counts.recebido || 0], ['permuta', 'Permuta', counts.permuta || 0]]
       .filter(([k, , n]) => k === 'todos' || n > 0 || k === f);
 
-    const focused = document.activeElement && document.activeElement.id === 'q-' + bloco;
+    const act = document.activeElement, focusId = act && act.id && el.contains(act) ? act.id : null;
+    let selr = null; try { if (focusId && act.selectionStart != null) selr = [act.selectionStart, act.selectionEnd]; } catch {}
     el.innerHTML = `
       <div class="shead">
         <div class="esq"><h2>${title}</h2><small>${money(total)} · ${all.length} ${all.length === 1 ? 'linha' : 'linhas'}</small></div>
@@ -412,13 +473,12 @@
         </div>
       </div>
       <div class="tbox"><div class="tablewrap"><table>
-        <thead><tr>
-          <th>Empresa</th><th>Loja</th><th class="r">Valor</th><th>Forma</th><th>Previsão</th><th>Observação</th><th class="r">Recebido</th><th>Status</th><th class="r"><span class="sr">Ações</span></th>
-        </tr></thead>
+        <thead><tr>${thHead}<th class="r">${so || nColF ? `<button type="button" class="limpar" data-clearcols="${bloco}">limpar ${so && nColF ? 'filtros e ordem' : nColF ? 'filtros' : 'ordem'}</button>` : '<span class="sr">Ações</span>'}</th></tr>
+        <tr class="frow">${thFilt}<th class="fcell"></th></tr></thead>
         <tbody>${rows.length ? rows.map(rowHtml).join('') : `<tr><td colspan="9" class="empty">${all.length ? 'Nenhuma linha neste filtro.' : 'Nenhum lançamento ainda. Use <b>+ Lançamento</b> para incluir.'}</td></tr>`}</tbody>
-        ${rows.length ? `<tfoot><tr><td colspan="2">Total ${f !== 'todos' || q ? 'filtrado' : ''}</td><td class="r money">${money(rows.reduce((s, l) => s + (Number(l.valor) || 0), 0))}</td><td colspan="3"></td><td class="r money">${money(rows.reduce((s, l) => s + recebido(l), 0))}</td><td colspan="2"></td></tr></tfoot>` : ''}
+        ${rows.length ? `<tfoot><tr><td colspan="2">Total ${filtrado ? `filtrado · ${rows.length} de ${all.length}` : ''}</td><td class="r money">${money(rows.reduce((s, l) => s + (Number(l.valor) || 0), 0))}</td><td colspan="3"></td><td class="r money">${money(rows.reduce((s, l) => s + recebido(l), 0))}</td><td colspan="2"></td></tr></tfoot>` : ''}
       </table></div></div>`;
-    if (focused) { const i = $('#q-' + bloco); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+    if (focusId) { const i = document.getElementById(focusId); if (i) { i.focus(); try { if (selr) i.setSelectionRange(selr[0], selr[1]); } catch {} } }
   }
 
   function rowHtml(l) {
@@ -448,6 +508,15 @@
   document.addEventListener('click', e => {
     const mb = e.target.closest('[data-month]');
     if (mb) { setMonth(mb.dataset.month); return; }
+    const so = e.target.closest('[data-sort]');
+    if (so) {
+      const b = so.dataset.bloco, k = so.dataset.sort, cur = state.sort[b];
+      // 1º clique: crescente · 2º: decrescente · 3º: volta à ordem da planilha
+      state.sort[b] = !cur || cur.k !== k ? { k, dir: 'asc' } : cur.dir === 'asc' ? { k, dir: 'desc' } : null;
+      saveCols(); render(); return;
+    }
+    const cl = e.target.closest('[data-clearcols]');
+    if (cl) { const b = cl.dataset.clearcols; state.sort[b] = null; state.colf[b] = {}; saveCols(); render(); return; }
     const chip = e.target.closest('[data-filter]');
     if (chip) { state.filter[chip.dataset.bloco] = chip.dataset.filter; try { localStorage.setItem('b2b.filters', JSON.stringify(state.filter)); } catch {} render(); return; }
     const act = e.target.closest('[data-act]');
@@ -455,8 +524,13 @@
     const close = e.target.closest('[data-close]');
     if (close) close.closest('dialog').close();
   });
+  document.addEventListener('change', e => {
+    const t = e.target;
+    if (t.matches('select[data-colf]')) { state.colf[t.dataset.bloco] = { ...state.colf[t.dataset.bloco], [t.dataset.colf]: t.value }; saveCols(); render(); }
+  });
   document.addEventListener('input', e => {
-    if (e.target.matches('input.search')) { const b = e.target.id.slice(2); state.q[b] = e.target.value; render(); }
+    if (e.target.matches('input.busca')) { const b = e.target.id.slice(2); state.q[b] = e.target.value; render(); }
+    if (e.target.matches('input[data-colf]')) { const t = e.target; state.colf[t.dataset.bloco] = { ...state.colf[t.dataset.bloco], [t.dataset.colf]: t.value }; saveCols(); render(); }
   });
 
   // ---------- writes ----------
