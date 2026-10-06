@@ -106,7 +106,7 @@
   .lojas{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
   .loja{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;font-weight:600;color:var(--ink-2)}
   .loja img{height:16px;width:auto;display:block}
-  .loja.txt{font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+  .lojatxt{white-space:nowrap;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
   .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);
     background:var(--surface);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px;white-space:nowrap}
   .pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:4px 12px;white-space:nowrap}
@@ -280,18 +280,6 @@
     parcial:  { label: 'parcial',   cls: 'st-parcial' },
     permuta:  { label: 'permuta',   cls: 'st-permuta' },
   };
-  // Código da loja → marca. BG = Bigg's, IS = Isaias, RB = Rob's, MP = Mapoli.
-  const MARCAS = { BG: ['biggs', "Bigg's"], IS: ['isaias', 'Isaias'], RB: ['robs', "Rob's"], ROBS: ['robs', "Rob's"], MP: ['mapoli', 'Mapoli'], MAPOLI: ['mapoli', 'Mapoli'] };
-  function lojaHtml(loja) {
-    const parts = String(loja || '').split(/[\/,;]+/).map(t => t.trim()).filter(Boolean);
-    if (!parts.length) return '';
-    return '<div class="lojas">' + parts.map(t => {
-      const m = t.toUpperCase().match(/^([A-Z']+)\s*(\d*)$/);
-      const mk = m && MARCAS[m[1].replace(/'/g, '')];
-      return mk ? `<span class="loja" title="${esc(mk[1] + (m[2] ? ' ' + m[2] : ''))}"><img src="marcas/${mk[0]}.png" alt="${esc(mk[1])}">${esc(m[2] || '')}</span>`
-                : `<span class="loja txt">${esc(t)}</span>`;
-    }).join('') + '</div>';
-  }
   const isPermuta = l => String(l.forma || '').toUpperCase().startsWith('PERMU');
   const recebido = l => l.dataPagamento ? (Number(l.valorRecebido) || 0) : 0;
   function statusOf(l) {
@@ -445,7 +433,7 @@
         <button class="limpar" data-act="edit" data-id="${esc(l.id)}">Editar</button></div>` : '';
     return `<tr>
       <td class="emp"><div class="co">${esc(l.empresa)}${tag}</div>${l.cnpj ? `<div class="meta">${esc(l.cnpj)}</div>` : ''}</td>
-      <td>${lojaHtml(l.loja)}</td>
+      <td><span class="lojatxt">${esc(l.loja || '')}</span></td>
       <td class="r money">${money(l.valor)}</td>
       <td>${esc(l.forma || '')}</td>
       <td class="when">${when}</td>
