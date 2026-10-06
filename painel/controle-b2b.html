@@ -41,7 +41,7 @@
   h2{font-weight:700;font-size:17px;letter-spacing:-.02em;margin:0}
   section{margin-bottom:26px}
   /* Cards do topo mantêm a largura de antes; só as tabelas usam a tela toda. */
-  .barra,.totais,.info,#months,#status{max-width:1088px;margin-inline:auto}
+  .barra,.totais,.info,#months,#status,#resumo{max-width:1088px;margin-inline:auto}
 
   .barra{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
     padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;margin-bottom:18px}
@@ -136,6 +136,8 @@
   .empty{padding:28px 16px;text-align:center;color:var(--ink-3)}
   .banner{background:var(--surface);border:1.5px dashed var(--line-2);border-radius:12px;padding:22px;color:var(--ink-2);text-align:center;margin-bottom:26px}
   .banner b{color:var(--ink)}
+  .wpp{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:16px 18px;margin:0;
+    font-family:var(--body);font-size:13px;line-height:1.55;color:var(--ink);white-space:pre-wrap;word-break:break-word;max-height:560px;overflow:auto}
   .sign{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;border-top:1px solid var(--line-2);padding-top:14px;margin-top:8px}
 
   dialog{border:1px solid var(--line);border-top:3px solid var(--brand);border-radius:12px;background:var(--surface);color:var(--ink);padding:0;
@@ -191,6 +193,13 @@
     <div class="info" id="info"></div>
     <section id="book-mensal"></section>
     <section id="book-semanal"></section>
+    <section id="resumo">
+      <div class="shead">
+        <div class="esq"><h2>Resumo para WhatsApp</h2><small>gerado do mês aberto · só o que ainda falta receber</small></div>
+        <div class="filtros"><button class="pick" id="copyResumo" type="button">Copiar texto</button></div>
+      </div>
+      <pre class="wpp" id="resumoTxt"></pre>
+    </section>
   </div>
   <footer class="sign"><span>Marketing abre. Venda reina. Caixa canta.</span><span>Grupo Ragga · Londrina–PR</span></footer>
 </div>
@@ -376,6 +385,7 @@
     renderCards(rows, mensal, semanal);
     renderBook('mensal', 'Mensal', mensal);
     renderBook('semanal', 'Semanal · vendas do Luiz', semanal);
+    $('#resumoTxt').textContent = resumoWpp(rows);
     document.querySelectorAll('[data-write]').forEach(b => b.hidden = !state.canWrite);
   }
 
@@ -504,6 +514,79 @@
       <td><span class="pill ${S.cls}">${S.label}</span></td>
       <td class="acol">${acts}</td></tr>`;
   }
+
+  // ---------- resumo para WhatsApp ----------
+  // Em aberto agrupado por forma de pagamento; boleto por vencimento; Pix e TED por data.
+  // Linhas com valor zero ficam em "valor a definir"; permuta separada (não entra no caixa).
+  function resumoWpp(rows) {
+    const brl = v => money(v).replace(/\u00a0/g, ' ');
+    const dm = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '';
+    const nome = l => String(l.empresa || '').trim();
+    const meta = state.months.get(state.cur) || {};
+    const rec = meta.recebimento || addMonths(state.cur, 1);
+    const hoje = isoToday();
+    const aberto = rows.filter(l => !isPermuta(l) && saldo(l) > 0.004);
+    const zero = rows.filter(l => !isPermuta(l) && !l.dataPagamento && !(Number(l.valor) > 0));
+    const perm = rows.filter(isPermuta);
+    const pagos = rows.filter(l => l.dataPagamento);
+    const forma = l => String(l.forma || 'OUTROS').toUpperCase();
+    const ordemF = ['BOLETO', 'PIX', 'TED'];
+    const formas = [...new Set(aberto.map(forma))].sort((a, b) => ((ordemF.indexOf(a) + 1) || 9) - ((ordemF.indexOf(b) + 1) || 9) || a.localeCompare(b));
+    const icone = { BOLETO: '🧾', PIX: '⚡', TED: '🏦' };
+    const rot = f => f === 'BOLETO' ? 'Boleto' : f === 'PIX' ? 'Pix' : f === 'TED' ? 'TED' : f.charAt(0) + f.slice(1).toLowerCase();
+    const sum = (a, fn = saldo) => a.reduce((s, l) => s + fn(l), 0);
+    const byDate = (a, b) => (a.previsao || '9').localeCompare(b.previsao || '9') || nome(a).localeCompare(nome(b), 'pt-BR');
+    const linha = l => {
+      const parcial = l.dataPagamento ? ` _(parcial: falta ${brl(saldo(l))} de ${brl(l.valor)})_` : '';
+      return `${nome(l)}: ${brl(saldo(l))}${parcial}`;
+    };
+    const tag = l => !l.previsao ? '' : l.previsao === hoje ? ' _(hoje)_' : l.previsao < hoje ? ' _(vencido)_' : '';
+
+    const out = [`*B2B · consumo de ${monthName(state.cur)} → recebimento em ${MESES[+rec.slice(5, 7) - 1]}*`, ''];
+    if (!aberto.length) out.push('Nada em aberto neste mês. ✅');
+    else {
+      out.push(`A receber: *${brl(sum(aberto))}* (${aberto.length} ${aberto.length === 1 ? 'empresa' : 'empresas'})`);
+      formas.forEach(f => { const a = aberto.filter(l => forma(l) === f); out.push(`• ${rot(f)}: ${brl(sum(a))} (${a.length})`); });
+    }
+    formas.forEach(f => {
+      const a = aberto.filter(l => forma(l) === f).sort(byDate);
+      out.push('');
+      if (f === 'BOLETO') {
+        const datas = [...new Set(a.map(l => l.previsao || l.previsaoNota || ''))];
+        if (datas.length === 1) {
+          out.push(`${icone[f]} *Boleto · ${datas[0] && datas[0].startsWith('20') ? 'vencimento ' + dm(datas[0]) + ' · ' : ''}${brl(sum(a))}*`);
+          a.sort((x, y) => nome(x).localeCompare(nome(y), 'pt-BR')).forEach(l => out.push(`- ${linha(l)}`));
+        } else {
+          out.push(`${icone[f]} *Boleto · ${brl(sum(a))}*`);
+          datas.forEach(d => {
+            const g = a.filter(l => (l.previsao || l.previsaoNota || '') === d);
+            out.push(`_${d.startsWith('20') ? 'vence ' + dm(d) : (d || 'sem data')} · ${brl(sum(g))}_`);
+            g.forEach(l => out.push(`- ${linha(l)}${tag(l)}`));
+          });
+        }
+      } else {
+        out.push(`${icone[f] || '💳'} *${rot(f)} · ${brl(sum(a))}*`);
+        a.forEach(l => out.push(l.previsao ? `- ${dm(l.previsao)} · ${linha(l)}${tag(l)}` : `- ${linha(l)}${l.previsaoNota ? ` _(previsão: ${l.previsaoNota})_` : ''}`));
+      }
+    });
+    if (zero.length) {
+      const datas = [...new Set(zero.map(l => l.previsao).filter(Boolean))];
+      out.push('', `⏳ *Valor a definir${datas.length === 1 ? ' · previsão ' + dm(datas[0]) : ''}*`);
+      zero.forEach(l => out.push(`- ${nome(l)}`));
+    }
+    if (perm.length) {
+      out.push('', `🔁 *Permuta (não entra no caixa) · ${brl(sum(perm, l => Number(l.valor) || 0))}*`);
+      perm.forEach(l => out.push(`- ${nome(l)}: ${brl(l.valor)}`));
+    }
+    out.push('', pagos.length ? `✅ Já recebido: ${brl(sum(pagos, recebido))} (${pagos.length})` : '✅ Nenhum pagamento baixado ainda.');
+    return out.join('\n');
+  }
+  $('#copyResumo').addEventListener('click', async () => {
+    const t = $('#resumoTxt').textContent, b = $('#copyResumo');
+    try { await navigator.clipboard.writeText(t); b.textContent = 'Copiado!'; }
+    catch { const r = document.createRange(); r.selectNodeContents($('#resumoTxt')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); b.textContent = 'Selecionado: Ctrl+C'; }
+    setTimeout(() => { b.textContent = 'Copiar texto'; }, 2000);
+  });
 
   // ---------- events ----------
 
