@@ -123,6 +123,7 @@
   .lojatxt{white-space:nowrap;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
   .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);
     background:var(--surface);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+  .tag.grupo{color:var(--brand);border-color:var(--brand-soft);background:var(--brand-soft)}
   .pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:4px 12px;white-space:nowrap}
   .st-aberto{background:var(--info-soft);color:var(--info)}
   .st-vencido{background:var(--brand-soft);color:var(--brand)}
@@ -242,6 +243,7 @@
         <select id="fForma"><option>BOLETO</option><option>PIX</option><option>TED</option><option>PERMUTA</option><option>CARTÃO</option><option>DINHEIRO</option></select></div>
       <div class="fld"><label for="fPrev">Previsão de recebimento</label><input id="fPrev" type="date"></div>
       <div class="fld"><label for="fPrevNota">Previsão (texto)</label><input id="fPrevNota" type="text" placeholder="Se não tiver data. Ex.: MONALISA"></div>
+      <div class="fld full"><label for="fGrupo">Grupo</label><input id="fGrupo" type="text" list="gruposList" placeholder="Ex.: LOJAS · soma junto no resumo do WhatsApp"><datalist id="gruposList"></datalist></div>
       <div class="fld full"><label for="fObs">Observação</label><input id="fObs" type="text" placeholder="NF OK, consumo 28-09 a 04-10…"></div>
     </div>
     <div class="err" id="editErr"></div>
@@ -498,7 +500,7 @@
     const today = isoToday();
     let when = l.previsao ? fmtDate(l.previsao) : esc(l.previsaoNota || '—');
     if (s === 'vencido') when += `<span class="late">${daysBetween(l.previsao, today)} dia(s) de atraso</span>`;
-    const tag = l.tag ? `<span class="tag">${esc(l.tag)}</span>` : '';
+    const tag = (l.grupo ? `<span class="tag grupo">${esc(l.grupo)}</span>` : '') + (l.tag ? `<span class="tag">${esc(l.tag)}</span>` : '');
     const rest = s === 'parcial' ? `<span class="rest">falta ${money(saldo(l))}</span>` : '';
     const acts = state.canWrite ? `<div class="acts">
         ${s === 'permuta' ? '' : (l.dataPagamento ? `<button class="limpar" data-act="pay" data-id="${esc(l.id)}">Ver baixa</button>` : `<button class="pick sm" data-act="pay" data-id="${esc(l.id)}">Dar baixa</button>`)}
@@ -541,6 +543,18 @@
       return `${nome(l)}: ${brl(saldo(l))}${parcial}`;
     };
     const tag = l => !l.previsao ? '' : l.previsao === hoje ? ' _(hoje)_' : l.previsao < hoje ? ' _(vencido)_' : '';
+    // Empresas com o mesmo Grupo (ex.: LOJAS) saem juntas, com subtotal; as demais vêm depois.
+    const emit = (a, fmt) => {
+      const grupos = [...new Set(a.map(l => l.grupo).filter(Boolean))].sort();
+      grupos.forEach(g => {
+        const gs = a.filter(l => l.grupo === g);
+        out.push(`*${g} · ${brl(sum(gs))}* (${gs.length})`);
+        gs.forEach(l => out.push(`- ${fmt(l)}`));
+      });
+      const resto = a.filter(l => !l.grupo);
+      if (grupos.length && resto.length) out.push(`*Demais empresas · ${brl(sum(resto))}* (${resto.length})`);
+      resto.forEach(l => out.push(`- ${fmt(l)}`));
+    };
 
     const out = [`*B2B · consumo de ${monthName(state.cur)} → recebimento em ${MESES[+rec.slice(5, 7) - 1]}*`, ''];
     if (!aberto.length) out.push('Nada em aberto neste mês. ✅');
@@ -555,18 +569,18 @@
         const datas = [...new Set(a.map(l => l.previsao || l.previsaoNota || ''))];
         if (datas.length === 1) {
           out.push(`${icone[f]} *Boleto · ${datas[0] && datas[0].startsWith('20') ? 'vencimento ' + dm(datas[0]) + ' · ' : ''}${brl(sum(a))}*`);
-          a.sort((x, y) => nome(x).localeCompare(nome(y), 'pt-BR')).forEach(l => out.push(`- ${linha(l)}`));
+          emit(a.sort((x, y) => nome(x).localeCompare(nome(y), 'pt-BR')), linha);
         } else {
           out.push(`${icone[f]} *Boleto · ${brl(sum(a))}*`);
           datas.forEach(d => {
             const g = a.filter(l => (l.previsao || l.previsaoNota || '') === d);
             out.push(`_${d.startsWith('20') ? 'vence ' + dm(d) : (d || 'sem data')} · ${brl(sum(g))}_`);
-            g.forEach(l => out.push(`- ${linha(l)}${tag(l)}`));
+            emit(g, l => `${linha(l)}${tag(l)}`);
           });
         }
       } else {
         out.push(`${icone[f] || '💳'} *${rot(f)} · ${brl(sum(a))}*`);
-        a.forEach(l => out.push(l.previsao ? `- ${dm(l.previsao)} · ${linha(l)}${tag(l)}` : `- ${linha(l)}${l.previsaoNota ? ` _(previsão: ${l.previsaoNota})_` : ''}`));
+        emit(a, l => l.previsao ? `${dm(l.previsao)} · ${linha(l)}${tag(l)}` : `${linha(l)}${l.previsaoNota ? ` _(previsão: ${l.previsaoNota})_` : ''}`);
       }
     });
     if (zero.length) {
@@ -664,6 +678,8 @@
     $('#editTitle').textContent = l ? 'Editar lançamento' : `Novo lançamento · ${monthName(state.cur)}`;
     $('#fBloco').value = l?.bloco || 'mensal';
     $('#fTag').value = l?.tag || '';
+    $('#fGrupo').value = l?.grupo || '';
+    $('#gruposList').innerHTML = [...new Set([...state.lancs.values()].map(x => x.grupo).filter(Boolean))].sort().map(g => `<option value="${esc(g)}">`).join('');
     $('#fEmpresa').value = l?.empresa || '';
     $('#fCnpj').value = l?.cnpj || '';
     $('#fLoja').value = l?.loja || '';
@@ -685,7 +701,7 @@
     if (!$('#fEmpresa').value.trim()) { $('#editErr').textContent = 'Informe a empresa.'; return; }
     if (!(valor >= 0)) { $('#editErr').textContent = 'Valor inválido. Use o formato 1.234,56.'; return; }
     const body = {
-      bloco: $('#fBloco').value, tag: $('#fTag').value, empresa: $('#fEmpresa').value.trim().toUpperCase(),
+      bloco: $('#fBloco').value, tag: $('#fTag').value, grupo: $('#fGrupo').value.trim().toUpperCase(), empresa: $('#fEmpresa').value.trim().toUpperCase(),
       cnpj: $('#fCnpj').value.trim(), loja: $('#fLoja').value.trim().toUpperCase(), valor,
       forma: $('#fForma').value, previsao: $('#fPrev').value, previsaoNota: $('#fPrevNota').value.trim(),
       obs: $('#fObs').value.trim(), atualizadoEm: new Date().toISOString(),
@@ -732,7 +748,7 @@
           let prev = '';
           if (l.previsao) prev = isPermuta(l) ? '' : (l.forma === 'BOLETO' && prevPadrao ? prevPadrao : addMonths(l.previsao.slice(0, 7), 1) + l.previsao.slice(7));
           await state.db.collection('lancamentos').doc().set({
-            mes: c, bloco: 'mensal', ordem: l.ordem ?? 0, empresa: l.empresa, cnpj: l.cnpj || '', loja: l.loja || '', tag: l.tag || '',
+            mes: c, bloco: 'mensal', ordem: l.ordem ?? 0, empresa: l.empresa, cnpj: l.cnpj || '', loja: l.loja || '', tag: l.tag || '', grupo: l.grupo || '',
             forma: l.forma || '', valor: 0, previsao: prev, previsaoNota: l.previsaoNota || '', obs: '',
             dataPagamento: '', valorRecebido: null, obsPagamento: '', atualizadoEm: new Date().toISOString(),
           });
