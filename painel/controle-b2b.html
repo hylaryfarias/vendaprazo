@@ -41,7 +41,34 @@
   h2{font-weight:700;font-size:17px;letter-spacing:-.02em;margin:0}
   section{margin-bottom:26px}
   /* Cards do topo mantêm a largura de antes; só as tabelas usam a tela toda. */
-  .barra,.totais,.info,#months,#status,#resumo{max-width:1088px;margin-inline:auto}
+  .barra,.totais,.info,#status,#resumo{max-width:1088px;margin-inline:auto}
+
+  /* Coluna dos meses (mesmo modelo do "Período do repasse"): um cartão por mês de recebimento. */
+  .layout{display:grid;grid-template-columns:232px minmax(0,1fr);gap:24px;align-items:start}
+  .lado{position:sticky;top:calc(16px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:10px}
+  .lado-k{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);padding-left:2px}
+  .meses{display:flex;flex-direction:column;gap:8px}
+  .mes{font:inherit;text-align:left;width:100%;display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;
+    background:var(--sunk);border:1px solid var(--line-2);border-radius:10px;padding:11px 13px;cursor:pointer;color:var(--ink)}
+  .mes:hover{border-color:var(--brand)}
+  .mes b{font-size:13.5px;font-weight:700;letter-spacing:.01em;text-transform:uppercase}
+  .mes small{grid-column:1;font-size:12px;color:var(--ink-3)}
+  .mes i{grid-row:1/3;grid-column:2;font-style:normal;font-size:15px;color:var(--ink-3)}
+  .mes.ativo{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:var(--shadow)}
+  .mes.ativo small,.mes.ativo i{color:rgba(255,255,255,.85)}
+  .sub-mes{display:flex;flex-direction:column;margin:2px 0 4px 12px;padding-left:12px;border-left:2px solid var(--line-2)}
+  .sub-mes a{display:flex;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--ink-2);text-decoration:none;padding:6px 8px;border-radius:6px}
+  .sub-mes a:hover{background:var(--surface);color:var(--brand)}
+  .sub-mes a span{color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .novo-mes{font:inherit;font-size:12.5px;font-weight:600;color:var(--brand);background:transparent;border:1.5px dashed var(--line-2);border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left}
+  .novo-mes:hover{border-color:var(--brand);background:var(--brand-soft)}
+  @media (max-width:900px){
+    .layout{grid-template-columns:minmax(0,1fr)}
+    .lado{position:static}
+    .meses{flex-direction:row;flex-wrap:wrap}
+    .mes{flex:1 1 180px}
+    .sub-mes{display:none}
+  }
 
   .barra{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
     padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;margin-bottom:18px}
@@ -174,17 +201,19 @@
 </header>
 
 <div class="wrap">
+ <div class="layout">
+  <aside class="lado" aria-label="Mês de recebimento">
+    <div class="lado-k">Mês de recebimento</div>
+    <nav class="meses" id="months"></nav>
+    <button class="novo-mes" id="newMonthBtn" type="button" data-write>+ Novo fechamento</button>
+  </aside>
+  <div class="conteudo">
   <div class="barra">
     <div class="esq" id="barraInfo"><span><span class="ponto"></span>Carregando…</span></div>
     <div class="dir">
-      <button class="neutro" id="newMonthBtn" type="button" data-write>Novo mês</button>
       <button class="pick" id="addBtn" type="button" data-write>+ Lançamento</button>
     </div>
   </div>
-
-  <section style="margin-bottom:16px">
-    <div class="abas" id="months" role="group" aria-label="Mês de consumo"></div>
-  </section>
 
   <div id="status" class="banner">Carregando os lançamentos…</div>
 
@@ -202,6 +231,8 @@
       <pre class="wpp" id="resumoTxt"></pre>
     </section>
   </div>
+  </div>
+ </div>
   <footer class="sign"><span>Marketing abre. Venda reina. Caixa canta.</span><span>Grupo Ragga · Londrina–PR</span></footer>
 </div>
 
@@ -393,11 +424,20 @@
 
   function renderMonthNav(list) {
     const recOf = m => (state.months.get(m) || {}).recebimento || addMonths(m, 1);
-    $('#months').innerHTML = list.map(m => `<button type="button" class="aba${m === state.cur ? ' ativa' : ''}" data-month="${m}" aria-pressed="${m === state.cur}">${esc(monthName(m))}<small>recebe ${esc(MESES[+recOf(m).slice(5, 7) - 1].slice(0, 3))}</small></button>`).join('');
+    // Mais recente em cima. O cartão leva o mês de recebimento; embaixo, o mês de consumo.
+    $('#months').innerHTML = [...list].reverse().map(m => {
+      const on = m === state.cur, meta = state.months.get(m) || {};
+      const ls = [...state.lancs.values()].filter(l => l.mes === m);
+      const tot = b => ls.filter(l => (l.bloco || 'mensal') === b).reduce((s, l) => s + (Number(l.valor) || 0), 0);
+      const sub = on ? `consumo de ${MESES[+m.slice(5, 7) - 1]}${meta.fechamento ? ' · fecha ' + fmtDate(meta.fechamento).slice(0, 5) : ''}`
+                     : `consumo de ${MESES[+m.slice(5, 7) - 1]} · ${ls.length} ${ls.length === 1 ? 'lançamento' : 'lançamentos'}`;
+      return `<button type="button" class="mes${on ? ' ativo' : ''}" data-month="${m}" aria-current="${on ? 'true' : 'false'}"><b>${esc(monthName(recOf(m)))}</b><small>${esc(sub)}</small><i aria-hidden="true">${on ? '⌄' : '›'}</i></button>`
+        + (on ? `<div class="sub-mes"><a href="#book-mensal">Mensal <span>${money(tot('mensal'))}</span></a><a href="#book-semanal">Semanal <span>${money(tot('semanal'))}</span></a><a href="#resumo">Resumo WhatsApp</a></div>` : '');
+    }).join('');
     const bits = [];
     if (state.cur) bits.push(`<span><span class="ponto"></span>Consumo de <b>${esc(monthName(state.cur))}</b> · recebimento em <b>${esc(monthName(recOf(state.cur)))}</b></span>`);
     const last = [...state.lancs.values()].filter(l => l.mes === state.cur).map(l => l.atualizadoEm || '').sort().pop();
-    if (last) bits.push(`<span>última atualização em ${fmtDate(last.slice(0, 10))}</span>`);
+    if (last) { const d = new Date(last); bits.push(`<span>última atualização em ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}</span>`); }
     if (!state.canWrite) bits.push('<span>somente leitura</span>');
     $('#barraInfo').innerHTML = bits.join('') || '<span><span class="ponto"></span>Nenhum mês aberto</span>';
   }
@@ -602,6 +642,8 @@
   // ---------- events ----------
 
   document.addEventListener('click', e => {
+    const ancora = e.target.closest('.sub-mes a');
+    if (ancora) { e.preventDefault(); const t = document.querySelector(ancora.getAttribute('href')); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     const mb = e.target.closest('[data-month]');
     if (mb) { setMonth(mb.dataset.month); return; }
     const so = e.target.closest('[data-sort]');
@@ -734,7 +776,7 @@
     e.preventDefault();
     const c = $('#mConsumo').value;
     if (!c) { $('#monthErr').textContent = 'Escolha o mês de consumo.'; return; }
-    if (monthList().includes(c)) { $('#monthErr').textContent = `${monthName(c)} já existe. Use as setas para navegar até ele.`; return; }
+    if (monthList().includes(c)) { $('#monthErr').textContent = `${monthName(c)} já existe. Clique no cartão dele, na coluna da esquerda.`; return; }
     const prevMonth = monthList().filter(m => m < c).pop();
     const prevPadrao = $('#mPrev').value;
     const ok = await write(async () => {
