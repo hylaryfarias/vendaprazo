@@ -663,6 +663,7 @@
 
   function renderColab() {
     const rows = colabRows(), per = colabPeriodo();
+    const periodo = `${fmtDate(per.ini).slice(0, 5)} a ${fmtDate(per.fim).slice(0, 5)}`;
     const q = state.cBusca.trim().toLowerCase();
     const tot = rows.reduce((s, c) => s + (Number(c.valor) || 0), 0);
     const nomes = new Set(rows.map(c => c.colaborador)), lojas = new Set(rows.map(c => c.loja));
@@ -674,18 +675,18 @@
     // Totais: geral, colaboradores, lojas e um card por empresa, comparando com a linha "CONSUMO COLABORADORES <EMPRESA>" do Mensal.
     const b2bLinha = e => [...state.lancs.values()].find(l => l.mes === state.cur && new RegExp('COLABORADORES\\s+' + e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i').test(String(l.empresa || '').trim()));
     const cards = [
-      card('', 'Total colaboradores', money(tot), `${rows.length} ${rows.length === 1 ? 'lançamento' : 'lançamentos'} · ${fmtDate(per.ini).slice(0, 5)} a ${fmtDate(per.fim).slice(0, 5)}`),
-      card('', 'Colaboradores', String(nomes.size), `em ${lojas.size} ${lojas.size === 1 ? 'loja' : 'lojas'}`),
+      card('', 'Total colaboradores', money(tot), `${rows.length} ${rows.length === 1 ? 'lançamento' : 'lançamentos'} · ${periodo}`),
+      card('', 'Colaboradores', String(nomes.size), `em ${lojas.size} ${lojas.size === 1 ? 'loja' : 'lojas'} · ${periodo}`),
     ];
     emps.forEach(e => {
       const v = rows.filter(c => (c.empresa || 'SEM EMPRESA') === e).reduce((s, c) => s + (Number(c.valor) || 0), 0);
       const l = e !== 'SEM EMPRESA' && b2bLinha(e);
-      let sub = 'pago pela empresa';
+      let sub = periodo;
       if (l) {
         const lv = Number(l.valor) || 0;
-        sub = Math.abs(lv - v) < 0.005 ? `igual ao Mensal ✓` : `no Mensal: ${money(lv)}${state.canWrite ? ` · <button type="button" class="limpar" data-levar="${esc(l.id)}" data-valor="${v}">levar ${money(v)} para o Mensal</button>` : ''}`;
+        if (Math.abs(lv - v) >= 0.005) sub += ` · no Mensal: ${money(lv)}${state.canWrite ? ` · <button type="button" class="limpar" data-levar="${esc(l.id)}" data-valor="${v}">levar ${money(v)} para o Mensal</button>` : ''}`;
       }
-      if (e === 'LOJAS') sub = `${new Set(rows.filter(c => c.empresa === 'LOJAS').map(c => c.loja)).size} lojas · cada loja paga os seus`;
+      if (e === 'LOJAS') sub = `${new Set(rows.filter(c => c.empresa === 'LOJAS').map(c => c.loja)).size} lojas · ${periodo}`;
       cards.push(card(e === 'SEM EMPRESA' ? 'late' : '', e === 'SEM EMPRESA' ? 'Sem empresa definida' : e, money(v), sub));
     });
     $('#cCards').innerHTML = cards.join('');
