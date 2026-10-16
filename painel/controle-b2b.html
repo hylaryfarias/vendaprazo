@@ -270,12 +270,14 @@
     <section id="c-lanc">
       <div class="shead">
         <div class="esq"><h2>Lançamentos</h2><small id="cLancSub"></small></div>
-        <div class="filtros" data-write>
-          <button class="neutro" id="cColar" type="button">Colar do Excel</button>
-          <button class="pick" id="cAdd" type="button">+ Consumo</button>
+        <div class="filtros">
+          <input class="busca" id="cLancBusca" type="search" placeholder="Buscar colaborador" aria-label="Buscar colaborador nos lançamentos">
+          <button type="button" class="aba" id="cLancToggle" aria-controls="cLancBox"></button>
+          <button class="neutro" id="cColar" type="button" data-write>Colar do Excel</button>
+          <button class="pick" id="cAdd" type="button" data-write>+ Consumo</button>
         </div>
       </div>
-      <div class="tbox"><div class="tablewrap"><table id="cLanc"></table></div></div>
+      <div class="tbox" id="cLancBox"><div class="tablewrap"><table id="cLanc"></table></div></div>
     </section>
   </div>
   </div>
@@ -344,7 +346,6 @@
       <div class="fld"><label for="kLoja">Loja</label><input id="kLoja" type="text" list="kLojas" placeholder="BG 01, IS 01…" required><datalist id="kLojas"></datalist></div>
       <div class="fld"><label for="kEmp">Empresa que paga</label><input id="kEmp" type="text" list="kEmps" placeholder="LOJAS, MEL, RAGGA, VESPA"><datalist id="kEmps"></datalist></div>
       <div class="fld"><label for="kFil">Filial do consumo</label><input id="kFil" type="text" placeholder="BIGGS 01 - MARINGA"></div>
-      <div class="fld"><label for="kData">Data do consumo</label><input id="kData" type="date"></div>
       <div class="fld"><label for="kValor">Valor (R$)</label><input id="kValor" type="text" inputmode="decimal" required></div>
       <div class="fld full"><label for="kObs">Observação</label><input id="kObs" type="text"></div>
     </div>
@@ -363,8 +364,8 @@
 <dialog id="dlgColar">
   <form id="colarForm" method="dialog">
     <h3>Colar consumo do Excel</h3>
-    <p class="who">Copie as linhas na planilha e cole aqui. Colunas aceitas: <b>Colaborador · Loja · Valor</b> e, se tiver, <b>Empresa · Data</b>. Se a primeira linha for o cabeçalho, o painel usa os nomes dele para achar cada coluna.</p>
-    <div class="fld"><label for="pTxt">Linhas copiadas</label><textarea id="pTxt" rows="9" placeholder="MARIA SILVA	BG 01	45,90	MEL	20/09/2026"></textarea></div>
+    <p class="who">Copie as linhas na planilha e cole aqui. Colunas aceitas: <b>Colaborador · Loja · Valor</b> e, se tiver, <b>Filial · Empresa · CPF · Cód</b>. Se a primeira linha for o cabeçalho, o painel usa os nomes dele para achar cada coluna.</p>
+    <div class="fld"><label for="pTxt">Linhas copiadas</label><textarea id="pTxt" rows="9" placeholder="MARIA SILVA	BG 01	45,90"></textarea></div>
     <div class="previa" id="pPrev">Nada colado ainda.</div>
     <label class="check"><input id="pSubst" type="checkbox"> <span>Substituir: apagar os lançamentos de colaboradores que já existem neste mês antes de importar.</span></label>
     <div class="err" id="pErr"></div>
@@ -434,7 +435,8 @@
   const saldo = l => isPermuta(l) ? 0 : Math.max((Number(l.valor) || 0) - recebido(l), 0);
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '' };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', cLancQ: '', cLancOpen: true };
+  try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
   try { if (localStorage.getItem('b2b.view') === 'colab') state.view = 'colab'; } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
   try { const t = JSON.parse(localStorage.getItem('b2b.cols') || 'null'); if (t) { Object.assign(state.sort, t.sort); Object.assign(state.colf, t.colf); } } catch {}
@@ -694,11 +696,10 @@
     $('#cCards').innerHTML = cards.join('');
 
     const ro = state.canWrite ? '' : ' disabled';
-    const fora = rows.filter(c => c.data && (c.data < per.ini || c.data > per.fim));
     $('#cInfo').innerHTML = `
       <label class="mfld">Consumo de <input class="cell" type="date" data-cper="colabIni" value="${per.ini}"${ro}></label>
       <label class="mfld">até <input class="cell" type="date" data-cper="colabFim" value="${per.fim}"${ro}></label>
-      ${fora.length ? `<span class="aviso">${fora.length} ${fora.length === 1 ? 'lançamento está' : 'lançamentos estão'} fora do período</span>` : ''}`;
+`;
 
     // Total por loja → abertura por colaborador
     const porLoja = {};
@@ -724,11 +725,18 @@
     $('#cLojas').innerHTML = html;
 
     // Lista dos lançamentos
-    const ls = rows.slice().sort((a, b) => (ehEmpresa(a.loja) ? 1 : 0) - (ehEmpresa(b.loja) ? 1 : 0) || natural(a.loja, b.loja) || natural(a.colaborador, b.colaborador));
-    $('#cLancSub').textContent = `${ls.length} ${ls.length === 1 ? 'lançamento' : 'lançamentos'}`;
-    $('#cLanc').innerHTML = `<thead><tr><th>Colaborador</th><th>Loja / empresa</th><th>Filial do consumo</th><th>Data</th><th class="r">Valor</th><th>Observação</th><th class="r"><span class="sr">Ações</span></th></tr></thead><tbody>${
-      ls.length ? ls.map(c => `<tr><td><b>${esc(c.colaborador)}</b>${c.cpf || c.cod ? `<div class="meta">${esc([c.cod && 'cód. ' + c.cod, c.cpf].filter(Boolean).join(' · '))}</div>` : ''}</td><td>${esc(c.loja)}</td><td><span class="note">${esc(c.filial || '—')}</span></td><td class="when">${c.data ? fmtDate(c.data) : '—'}${c.data && (c.data < per.ini || c.data > per.fim) ? '<span class="late">fora do período</span>' : ''}</td><td class="r money">${money(c.valor)}</td><td><span class="note">${esc(c.obs || '')}</span></td><td class="acol">${state.canWrite ? `<div class="acts"><button class="limpar" data-cedit="${esc(c.id)}">Editar</button></div>` : ''}</td></tr>`).join('')
-      : '<tr><td colspan="7" class="empty">Nenhum lançamento.</td></tr>'}</tbody>`;
+    const lq = state.cLancQ.trim().toLowerCase();
+    const ls = rows.filter(c => !lq || `${c.colaborador} ${c.cpf || ''} ${c.cod || ''}`.toLowerCase().includes(lq)).sort((a, b) => (ehEmpresa(a.loja) ? 1 : 0) - (ehEmpresa(b.loja) ? 1 : 0) || natural(a.loja, b.loja) || natural(a.colaborador, b.colaborador));
+    $('#cLancSub').textContent = lq ? `${ls.length} de ${rows.length} · ${money(ls.reduce((s, c) => s + (Number(c.valor) || 0), 0))}` : `${rows.length} ${rows.length === 1 ? 'lançamento' : 'lançamentos'}`;
+    // Lista pode ser escondida; buscar um nome mostra a lista mesmo escondida.
+    const aberta = state.cLancOpen || !!lq;
+    $('#cLancBox').hidden = !aberta;
+    $('#cLancToggle').textContent = aberta ? 'esconder lista' : 'mostrar lista';
+    $('#cLancToggle').classList.toggle('ativa', !aberta);
+    $('#cLancToggle').setAttribute('aria-expanded', aberta);
+    $('#cLanc').innerHTML = `<thead><tr><th>Colaborador</th><th>Loja / empresa</th><th>Filial do consumo</th><th class="r">Valor</th><th>Observação</th><th class="r"><span class="sr">Ações</span></th></tr></thead><tbody>${
+      ls.length ? ls.map(c => `<tr><td><b>${esc(c.colaborador)}</b>${c.cpf || c.cod ? `<div class="meta">${esc([c.cod && 'cód. ' + c.cod, c.cpf].filter(Boolean).join(' · '))}</div>` : ''}</td><td>${esc(c.loja)}</td><td><span class="note">${esc(c.filial || '—')}</span></td><td class="r money">${money(c.valor)}</td><td><span class="note">${esc(c.obs || '')}</span></td><td class="acol">${state.canWrite ? `<div class="acts"><button class="limpar" data-cedit="${esc(c.id)}">Editar</button></div>` : ''}</td></tr>`).join('')
+      : `<tr><td colspan="6" class="empty">${lq ? `Nenhum colaborador encontrado para "${esc(state.cLancQ)}".` : 'Nenhum lançamento.'}</td></tr>`}</tbody>`;
   }
 
   function setView(v) {
@@ -750,7 +758,7 @@
     cEditId = c ? c.id : null; cDelArmed = false; fillLists();
     $('#cTitle').textContent = c ? 'Editar consumo' : 'Novo consumo de colaborador';
     $('#kNome').value = c?.colaborador || ''; $('#kLoja').value = c?.loja || ''; $('#kEmp').value = c?.empresa || '';
-    $('#kData').value = c?.data || ''; $('#kFil').value = c?.filial || ''; $('#kValor').value = c ? moneyInput(c.valor) : ''; $('#kObs').value = c?.obs || '';
+    $('#kFil').value = c?.filial || ''; $('#kValor').value = c ? moneyInput(c.valor) : ''; $('#kObs').value = c?.obs || '';
     $('#kDel').hidden = !c; $('#kDel').textContent = 'Excluir'; $('#kErr').textContent = '';
     $('#dlgColab').showModal();
   }
@@ -761,7 +769,7 @@
     if (!$('#kNome').value.trim() || !$('#kLoja').value.trim()) { $('#kErr').textContent = 'Informe o colaborador e a loja.'; return; }
     if (!(valor >= 0)) { $('#kErr').textContent = 'Valor inválido. Use o formato 1.234,56.'; return; }
     const body = { colaborador: $('#kNome').value.trim().toUpperCase(), loja: $('#kLoja').value.trim().toUpperCase(), empresa: $('#kEmp').value.trim().toUpperCase(),
-      data: $('#kData').value, filial: $('#kFil').value.trim().toUpperCase(), valor, obs: $('#kObs').value.trim(), atualizadoEm: new Date().toISOString() };
+      filial: $('#kFil').value.trim().toUpperCase(), valor, obs: $('#kObs').value.trim(), atualizadoEm: new Date().toISOString() };
     const ok = await write(async () => {
       if (cEditId) await state.db.doc('colab/' + cEditId).update(body);
       else await state.db.collection('colab').doc().set({ ...body, mes: state.cur });
@@ -846,6 +854,13 @@
   });
   document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.loja-row')) { e.preventDefault(); e.target.click(); } });
   $('#cBusca').addEventListener('input', e => { state.cBusca = e.target.value; renderColab(); });
+  $('#cLancBusca').addEventListener('input', e => { state.cLancQ = e.target.value; renderColab(); });
+  $('#cLancToggle').addEventListener('click', () => {
+    state.cLancOpen = !($('#cLancBox').hidden === false);
+    if (!state.cLancOpen && state.cLancQ) { state.cLancQ = ''; $('#cLancBusca').value = ''; }
+    try { localStorage.setItem('b2b.clanc', state.cLancOpen ? '1' : '0'); } catch {}
+    renderColab();
+  });
 
   // ---------- resumo para WhatsApp ----------
   // Em aberto agrupado por forma de pagamento; boleto por vencimento; Pix e TED por data.
