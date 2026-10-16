@@ -676,7 +676,6 @@
     const cards = [
       card('', 'Total colaboradores', money(tot), `${rows.length} ${rows.length === 1 ? 'lançamento' : 'lançamentos'} · ${fmtDate(per.ini).slice(0, 5)} a ${fmtDate(per.fim).slice(0, 5)}`),
       card('', 'Colaboradores', String(nomes.size), `em ${lojas.size} ${lojas.size === 1 ? 'loja' : 'lojas'}`),
-      card('', 'Maior loja', lojas.size ? (() => { const m = {}; rows.forEach(c => m[c.loja] = (m[c.loja] || 0) + (Number(c.valor) || 0)); const [l, v] = Object.entries(m).sort((a, b) => b[1] - a[1])[0]; return esc(l) + ` <small class="vsub">${money(v)}</small>`; })() : '—', 'pelo total consumido'),
     ];
     emps.forEach(e => {
       const v = rows.filter(c => (c.empresa || 'SEM EMPRESA') === e).reduce((s, c) => s + (Number(c.valor) || 0), 0);
