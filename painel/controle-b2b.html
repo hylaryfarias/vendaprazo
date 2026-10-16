@@ -864,7 +864,7 @@
 
   // ---------- resumo para WhatsApp ----------
   // Em aberto agrupado por forma de pagamento; boleto por vencimento; Pix e TED por data.
-  // Linhas com valor zero ficam em "valor a definir"; permuta separada (não entra no caixa).
+  // Linhas com valor zero não aparecem; permuta separada (não entra no caixa).
   function resumoWpp(rows) {
     const brl = v => money(v).replace(/\u00a0/g, ' ');
     const dm = iso => iso ? iso.slice(8, 10) + '/' + iso.slice(5, 7) : '';
@@ -873,7 +873,6 @@
     const rec = meta.recebimento || addMonths(state.cur, 1);
     const hoje = isoToday();
     const aberto = rows.filter(l => !isPermuta(l) && saldo(l) > 0.004);
-    const zero = rows.filter(l => !isPermuta(l) && !l.dataPagamento && !(Number(l.valor) > 0));
     const perm = rows.filter(isPermuta);
     const pagos = rows.filter(l => l.dataPagamento);
     const forma = l => String(l.forma || 'OUTROS').toUpperCase();
@@ -929,11 +928,6 @@
         emit(a, l => l.previsao ? `${dm(l.previsao)} · ${linha(l)}${tag(l)}` : `${linha(l)}${l.previsaoNota ? ` _(previsão: ${l.previsaoNota})_` : ''}`);
       }
     });
-    if (zero.length) {
-      const datas = [...new Set(zero.map(l => l.previsao).filter(Boolean))];
-      out.push('', `⏳ *Valor a definir${datas.length === 1 ? ' · previsão ' + dm(datas[0]) : ''}*`);
-      zero.forEach(l => out.push(`- ${nome(l)}`));
-    }
     if (perm.length) {
       out.push('', `🔁 *Permuta (não entra no caixa) · ${brl(sum(perm, l => Number(l.valor) || 0))}*`);
       perm.forEach(l => out.push(`- ${nome(l)}: ${brl(l.valor)}`));
