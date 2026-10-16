@@ -899,11 +899,15 @@
     };
 
     const out = [`*B2B · consumo de ${monthName(state.cur)} → recebimento em ${MESES[+rec.slice(5, 7) - 1]}*`, ''];
-    if (!aberto.length) out.push('Nada em aberto neste mês. ✅');
+    // Total do mês = recebido + a receber (permuta fica fora, não entra no caixa).
+    const totRec = sum(pagos, recebido), totAb = sum(aberto);
+    out.push(`Total do mês: *${brl(totRec + totAb)}*`, '');
+    if (!aberto.length) out.push('A receber: *R$ 0,00* ✅');
     else {
-      out.push(`A receber: *${brl(sum(aberto))}* (${aberto.length} ${aberto.length === 1 ? 'empresa' : 'empresas'})`);
+      out.push(`A receber: *${brl(totAb)}* (${aberto.length} ${aberto.length === 1 ? 'empresa' : 'empresas'})`);
       formas.forEach(f => { const a = aberto.filter(l => forma(l) === f); out.push(`• ${rot(f)}: ${brl(sum(a))} (${a.length})`); });
     }
+    out.push('', `✅ Recebido: *${brl(totRec)}*${pagos.length ? ` (${pagos.length})` : ''}`);
     formas.forEach(f => {
       const a = aberto.filter(l => forma(l) === f).sort(byDate);
       out.push('');
@@ -934,7 +938,6 @@
       out.push('', `🔁 *Permuta (não entra no caixa) · ${brl(sum(perm, l => Number(l.valor) || 0))}*`);
       perm.forEach(l => out.push(`- ${nome(l)}: ${brl(l.valor)}`));
     }
-    out.push('', pagos.length ? `✅ Já recebido: ${brl(sum(pagos, recebido))} (${pagos.length})` : '✅ Nenhum pagamento baixado ainda.');
     return out.join('\n');
   }
   $('#copyResumo').addEventListener('click', async () => {
