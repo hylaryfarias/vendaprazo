@@ -177,6 +177,13 @@
   .ctab .seta{display:inline-block;width:12px;color:var(--brand)}
   .ctab tr.pessoa td{font-size:13px;color:var(--ink-2);padding-top:7px;padding-bottom:7px}
   .ctab tr.pessoa td:first-child{padding-left:38px}
+  .dhead{max-width:1088px;margin:0 auto 14px;display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center}
+  .dtab .dia-row{cursor:pointer}
+  .dtab .dia-row:hover td{background:#FBF9F4}
+  .dtab .dia-row.aberta td{background:var(--sunk);border-bottom-color:var(--line-2)}
+  .dtab .wd{font-size:12px;color:var(--ink-3);margin-left:2px}
+  .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
+  .dtab tr.dia-vazio b{font-weight:500}
   .ctab .onde{display:block;font-size:11.5px;color:var(--ink-3)}
   .aviso{font-size:12.5px;font-weight:600;color:var(--brand);padding-bottom:6px}
   .previa{background:var(--sunk);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--ink-2)}
@@ -236,6 +243,7 @@
   <div class="abas visoes" id="visoes" role="tablist" aria-label="Visão do mês">
     <button type="button" class="aba" role="tab" data-view="b2b">Recebimentos B2B</button>
     <button type="button" class="aba" role="tab" data-view="colab">Consumo colaboradores</button>
+    <button type="button" class="aba" role="tab" data-view="diario">Acompanhamento diário</button>
   </div>
 
   <div id="status" class="banner">Carregando os lançamentos…</div>
@@ -278,6 +286,26 @@
         </div>
       </div>
       <div class="tbox" id="cLancBox"><div class="tablewrap"><table id="cLanc"></table></div></div>
+    </section>
+  </div>
+  <div id="diario" hidden>
+    <div class="dhead">
+      <div class="abas" id="dMeses" role="group" aria-label="Mês do acompanhamento"></div>
+      <div class="filtros" data-write>
+        <button class="neutro" id="dColar" type="button">Colar do relatório</button>
+        <button class="pick" id="dAdd" type="button">+ Consumo</button>
+      </div>
+    </div>
+    <div class="totais" id="dCards"></div>
+    <section id="d-dias">
+      <div class="shead">
+        <div class="esq"><h2>Dia a dia</h2><small id="dSub"></small></div>
+        <div class="filtros">
+          <button type="button" class="aba" id="dExpand">abrir todos</button>
+          <input class="busca" id="dBusca" type="search" placeholder="Buscar pessoa" aria-label="Buscar pessoa no acompanhamento">
+        </div>
+      </div>
+      <div class="tbox"><div class="tablewrap"><table class="ctab dtab" id="dTab"></table></div></div>
     </section>
   </div>
   </div>
@@ -334,6 +362,47 @@
         <button class="pick" type="submit" id="editSave">Salvar</button>
       </div>
     </div>
+  </form>
+</dialog>
+
+<!-- Acompanhamento diário: um consumo -->
+<dialog id="dlgDia">
+  <form id="diaForm" method="dialog">
+    <h3 id="dTitle">Consumo a prazo do dia</h3>
+    <div class="grid2">
+      <div class="fld"><label for="qDia">Dia</label><input id="qDia" type="date" required></div>
+      <div class="fld"><label for="qValor">Valor consumido (R$)</label><input id="qValor" type="text" inputmode="decimal" required></div>
+      <div class="fld full"><label for="qNome">Nome</label><input id="qNome" type="text" list="qNomes" required><datalist id="qNomes"></datalist></div>
+      <div class="fld"><label for="qLoja">Loja</label><input id="qLoja" type="text" list="qLojas" placeholder="BG 01, IS 01…"><datalist id="qLojas"></datalist></div>
+      <div class="fld"><label for="qObs">Observação</label><input id="qObs" type="text"></div>
+    </div>
+    <div class="err" id="qErr"></div>
+    <div class="dlgacts">
+      <button class="limpar perigo" id="qDel" type="button" hidden>Excluir</button>
+      <div class="right">
+        <button class="neutro" type="button" data-close>Cancelar</button>
+        <button class="pick" type="submit">Salvar</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<!-- Acompanhamento diário: colar relatório -->
+<dialog id="dlgDColar">
+  <form id="dColarForm" method="dialog">
+    <h3>Colar relatório de vendas a prazo</h3>
+    <p class="who">Copie as linhas do relatório e cole aqui. Colunas aceitas: <b>Data · Nome · Valor</b> e, se tiver, <b>Loja</b>. Se o relatório não tiver a coluna de data, escolha o dia abaixo. Se a primeira linha for o cabeçalho, o painel usa os nomes dele para achar cada coluna.</p>
+    <div class="grid2">
+      <div class="fld"><label for="rDia">Dia (se o relatório não trouxer)</label><input id="rDia" type="date"></div>
+    </div>
+    <div class="fld"><label for="rTxt">Linhas copiadas</label><textarea id="rTxt" rows="9" placeholder="03/11/2026	MARIA SILVA	45,90	BG 01"></textarea></div>
+    <div class="previa" id="rPrev">Nada colado ainda.</div>
+    <label class="check"><input id="rSubst" type="checkbox"> <span>Substituir: apagar o que já existe nos dias que aparecem no relatório antes de importar.</span></label>
+    <div class="err" id="rErr"></div>
+    <div class="dlgacts"><div class="right">
+      <button class="neutro" type="button" data-close>Cancelar</button>
+      <button class="pick" type="submit" id="rOk" disabled>Importar</button>
+    </div></div>
   </form>
 </dialog>
 
@@ -435,9 +504,9 @@
   const saldo = l => isPermuta(l) ? 0 : Math.max((Number(l.valor) || 0) - recebido(l), 0);
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', cLancQ: '', cLancOpen: true };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), dMes: null, dOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
   try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
-  try { if (localStorage.getItem('b2b.view') === 'colab') state.view = 'colab'; } catch {}
+  try { const v = localStorage.getItem('b2b.view'); if (v === 'colab' || v === 'diario') state.view = v; } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
   try { const t = JSON.parse(localStorage.getItem('b2b.cols') || 'null'); if (t) { Object.assign(state.sort, t.sort); Object.assign(state.colf, t.colf); } } catch {}
   const saveCols = () => { try { localStorage.setItem('b2b.cols', JSON.stringify({ sort: state.sort, colf: state.colf })); } catch {} };
@@ -501,10 +570,11 @@
     if (!state.cur || !list.includes(state.cur)) state.cur = list.includes('2026-09') ? '2026-09' : list[list.length - 1];
     renderMonthNav(list);
     $('#status').hidden = true;
-    const colab = state.view === 'colab';
-    $('#main').hidden = colab; $('#colab').hidden = !colab; $('#addBtn').hidden = colab;
+    const colab = state.view === 'colab', diario = state.view === 'diario';
+    $('#main').hidden = colab || diario; $('#colab').hidden = !colab; $('#diario').hidden = !diario; $('#addBtn').hidden = colab || diario;
     document.querySelectorAll('#visoes [data-view]').forEach(b => { const on = b.dataset.view === state.view; b.classList.toggle('ativa', on); b.setAttribute('aria-selected', on); });
     renderColab();
+    renderDiario();
 
     const rows = [...state.lancs.values()].filter(l => l.mes === state.cur);
     const by = b => rows.filter(l => (l.bloco || 'mensal') === b).sort((a, c) => (a.ordem ?? 0) - (c.ordem ?? 0) || String(a.empresa).localeCompare(String(c.empresa)));
@@ -514,7 +584,7 @@
     renderBook('semanal', 'Semanal · vendas do Luiz', semanal);
     $('#resumoTxt').textContent = resumoWpp(rows);
     document.querySelectorAll('[data-write]').forEach(b => b.hidden = !state.canWrite);
-    if (colab) $('#addBtn').hidden = true;
+    if (colab || diario) $('#addBtn').hidden = true;
   }
 
   function renderMonthNav(list) {
@@ -651,6 +721,171 @@
       <td><span class="pill ${S.cls}">${S.label}</span></td>
       <td class="acol">${acts}</td></tr>`;
   }
+
+  // ---------- acompanhamento diário ----------
+  // Vendas a prazo do dia a dia, para a Amanda acompanhar quem consumiu. Não entra no fechamento.
+  // Cada consumo é um documento em "diario": {dia: 'AAAA-MM-DD', nome, valor, loja, obs}.
+  // O mês aqui é o do calendário (independe do mês de recebimento da coluna da esquerda).
+  const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  const diaRows = () => [...state.diario.values()].filter(d => (d.dia || '').slice(0, 7) === state.dMes);
+  function renderDiario() {
+    const meses = [...new Set([...state.diario.values()].map(d => (d.dia || '').slice(0, 7)).filter(Boolean).concat(isoToday().slice(0, 7)))].sort().reverse();
+    if (!state.dMes || !meses.includes(state.dMes)) state.dMes = meses[0];
+    $('#dMeses').innerHTML = meses.map(m => `<button type="button" class="aba${m === state.dMes ? ' ativa' : ''}" data-dmes="${m}" aria-pressed="${m === state.dMes}">${esc(monthName(m))}</button>`).join('');
+
+    const rows = diaRows(), q = state.dBusca.trim().toLowerCase();
+    const tot = rows.reduce((s, d) => s + (Number(d.valor) || 0), 0);
+    const pessoas = new Set(rows.map(d => d.nome));
+    const diasCom = new Set(rows.map(d => d.dia));
+    const hoje = isoToday();
+    const ultimo = state.dMes === hoje.slice(0, 7) ? +hoje.slice(8, 10) : new Date(+state.dMes.slice(0, 4), +state.dMes.slice(5, 7), 0).getDate();
+    const vHoje = rows.filter(d => d.dia === hoje).reduce((s, d) => s + (Number(d.valor) || 0), 0);
+    $('#dCards').innerHTML = [
+      card('', 'Total a prazo no mês', money(tot), `${rows.length} ${rows.length === 1 ? 'consumo' : 'consumos'} · ${monthName(state.dMes)}`),
+      card('', 'Pessoas', String(pessoas.size), `em ${diasCom.size} ${diasCom.size === 1 ? 'dia' : 'dias'} com consumo`),
+      state.dMes === hoje.slice(0, 7)
+        ? card('due', 'Hoje', money(vHoje), (n => `${n} ${n === 1 ? 'consumo' : 'consumos'} em ${fmtDate(hoje).slice(0, 5)}`)(rows.filter(d => d.dia === hoje).length))
+        : card('', 'Média por dia', money(diasCom.size ? tot / diasCom.size : 0), 'nos dias com consumo'),
+    ].join('');
+
+    // Todos os dias do mês até hoje (ou até o fim do mês), do mais antigo para o mais recente.
+    const porDia = {};
+    rows.forEach(d => (porDia[d.dia] ||= []).push(d));
+    const dias = [];
+    for (let i = 1; i <= ultimo; i++) dias.push(`${state.dMes}-${pad(i)}`);
+    const visiveis = q ? dias.filter(d => (porDia[d] || []).some(x => String(x.nome).toLowerCase().includes(q))) : dias;
+    $('#dSub').textContent = q ? `${visiveis.length} ${visiveis.length === 1 ? 'dia' : 'dias'} com "${state.dBusca.trim()}"` : `${money(tot)} · ${diasCom.size} de ${dias.length} dias com consumo`;
+    const comDados = visiveis.filter(d => porDia[d]);
+    $('#dExpand').textContent = comDados.length && comDados.every(d => state.dOpen.has(d)) ? 'fechar todos' : 'abrir todos';
+    let html = `<thead><tr><th>Dia</th><th class="r">Pessoas</th><th class="r">Consumos</th><th class="r">Total do dia</th><th class="r">Acumulado no mês</th></tr></thead><tbody>`;
+    let acum = 0;
+    const acumulado = {};
+    dias.forEach(d => { acum += (porDia[d] || []).reduce((s, x) => s + (Number(x.valor) || 0), 0); acumulado[d] = acum; });
+    if (!visiveis.length) html += `<tr><td colspan="5" class="empty">Ninguém encontrado para "${esc(state.dBusca)}".</td></tr>`;
+    visiveis.forEach(d => {
+      const ls = porDia[d] || [], v = ls.reduce((s, x) => s + (Number(x.valor) || 0), 0);
+      const open = ls.length && (state.dOpen.has(d) || !!q);
+      const wd = SEMANA[new Date(d + 'T12:00:00').getDay()];
+      const nomes = new Set(ls.map(x => x.nome)).size;
+      html += `<tr class="${ls.length ? 'dia-row' : 'dia-vazio'}${open ? ' aberta' : ''}"${ls.length ? ` data-dia="${d}" tabindex="0" aria-expanded="${!!open}"` : ''}>
+        <td><span class="seta" aria-hidden="true">${ls.length ? (open ? '▾' : '▸') : ''}</span> <b>${fmtDate(d).slice(0, 5)}</b> <span class="wd">${wd}</span>${d === hoje ? '<span class="tag grupo">hoje</span>' : ''}</td>
+        <td class="r">${ls.length ? nomes : '—'}</td><td class="r">${ls.length || '—'}</td>
+        <td class="r money">${ls.length ? money(v) : '<span class="note">—</span>'}</td><td class="r"><span class="note">${money(acumulado[d])}</span></td></tr>`;
+      if (open) ls.slice().sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0) || String(a.nome).localeCompare(String(b.nome)))
+        .filter(x => !q || String(x.nome).toLowerCase().includes(q))
+        .forEach(x => { html += `<tr class="pessoa"><td>${esc(x.nome)}${x.loja ? `<span class="tag">${esc(x.loja)}</span>` : ''}${x.obs ? `<span class="onde">${esc(x.obs)}</span>` : ''}</td><td></td><td></td><td class="r money">${money(x.valor)}</td><td class="r">${state.canWrite ? `<button class="limpar" data-dedit="${esc(x.id)}">Editar</button>` : ''}</td></tr>`; });
+    });
+    html += `</tbody>${rows.length ? `<tfoot><tr><td>Total do mês</td><td class="r">${pessoas.size}</td><td class="r">${rows.length}</td><td class="r money">${money(tot)}</td><td></td></tr></tfoot>` : ''}`;
+    $('#dTab').innerHTML = html;
+  }
+
+  let dEditId = null, dDelArmed = false;
+  function openDia(d, dia) {
+    dEditId = d ? d.id : null; dDelArmed = false;
+    const all = [...state.diario.values()];
+    const opts = arr => [...new Set(arr.filter(Boolean))].sort(natural).map(v => `<option value="${esc(v)}">`).join('');
+    $('#qNomes').innerHTML = opts(all.map(x => x.nome));
+    $('#qLojas').innerHTML = opts(all.map(x => x.loja));
+    $('#dTitle').textContent = d ? 'Editar consumo' : 'Consumo a prazo do dia';
+    $('#qDia').value = d?.dia || dia || isoToday(); $('#qNome').value = d?.nome || ''; $('#qValor').value = d ? moneyInput(d.valor) : '';
+    $('#qLoja').value = d?.loja || ''; $('#qObs').value = d?.obs || '';
+    $('#qDel').hidden = !d; $('#qDel').textContent = 'Excluir'; $('#qErr').textContent = '';
+    $('#dlgDia').showModal();
+  }
+  $('#dAdd').addEventListener('click', () => openDia(null));
+  $('#diaForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const valor = parseMoney($('#qValor').value);
+    if (!$('#qDia').value || !$('#qNome').value.trim()) { $('#qErr').textContent = 'Informe o dia e o nome.'; return; }
+    if (!(valor >= 0)) { $('#qErr').textContent = 'Valor inválido. Use o formato 1.234,56.'; return; }
+    const body = { dia: $('#qDia').value, nome: $('#qNome').value.trim().toUpperCase(), valor, loja: $('#qLoja').value.trim().toUpperCase(), obs: $('#qObs').value.trim(), atualizadoEm: new Date().toISOString() };
+    const ok = await write(async () => {
+      if (dEditId) await state.db.doc('diario/' + dEditId).update(body);
+      else await state.db.collection('diario').doc().set(body);
+    }, $('#qErr'));
+    if (ok) { state.dMes = body.dia.slice(0, 7); state.dOpen.add(body.dia); $('#dlgDia').close(); toast(dEditId ? 'Consumo atualizado' : 'Consumo incluído'); }
+  });
+  $('#qDel').addEventListener('click', async () => {
+    if (!dDelArmed) { dDelArmed = true; $('#qDel').textContent = 'Clique de novo para excluir'; return; }
+    const ok = await write(() => state.db.doc('diario/' + dEditId).delete(), $('#qErr'));
+    if (ok) { $('#dlgDia').close(); toast('Consumo excluído'); }
+  });
+
+  // Colar do relatório: tabulação (ou ;) entre colunas; cabeçalho opcional; data por linha ou a do campo.
+  function parseRelatorio(txt, diaPadrao) {
+    const linhas = txt.split(/\r?\n/).map(l => l.replace(/\s+$/, '')).filter(l => l.trim()).map(l => (l.includes('\t') ? l.split('\t') : l.split(';')).map(x => x.trim()));
+    if (!linhas.length) return { rows: [], erros: [] };
+    const toIso = s => {
+      s = String(s || '').trim();
+      let m = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+      if (m) { const y = m[3] ? (m[3].length === 2 ? '20' + m[3] : m[3]) : isoToday().slice(0, 4); return `${y}-${pad(m[2])}-${pad(m[1])}`; }
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[0] : '';
+    };
+    const ehValor = c => /^(R\$\s*)?-?[\d.]+(,\d{1,2})?$/.test(c.replace(/\s/g, ''));
+    let map = null;
+    const head = linhas[0].map(h => h.toLowerCase());
+    if (!head.some(ehValor)) {
+      const find = re => head.findIndex(h => re.test(h));
+      const m = { dia: find(/data|^dia/), nome: find(/nome|cliente|colab|funcion|pessoa/), valor: find(/valor|total|vendas|consumo/), loja: find(/loja|filial|unidade/) };
+      if (m.nome >= 0 || m.valor >= 0) { map = m; linhas.shift(); }
+    }
+    const rows = [], erros = [];
+    linhas.forEach((c, i) => {
+      let r;
+      if (map) {
+        const g = k => map[k] >= 0 ? (c[map[k]] || '') : '';
+        r = { dia: toIso(g('dia')) || diaPadrao, nome: g('nome'), valor: parseMoney(g('valor')), loja: g('loja') };
+      } else {
+        // Sem cabeçalho: descobre a data, o valor (último número) e o nome (primeiro texto) em cada linha.
+        const iData = c.findIndex(x => toIso(x) && /\//.test(x) || /^\d{4}-\d{2}-\d{2}/.test(x));
+        let iVal = -1; for (let k = c.length - 1; k >= 0; k--) if (k !== iData && ehValor(c[k])) { iVal = k; break; }
+        const textos = c.map((x, k) => [x, k]).filter(([x, k]) => k !== iData && k !== iVal && x && !ehValor(x));
+        r = { dia: iData >= 0 ? toIso(c[iData]) : diaPadrao, nome: textos[0]?.[0] || '', valor: iVal >= 0 ? parseMoney(c[iVal]) : NaN, loja: textos[1]?.[0] || '' };
+      }
+      r.nome = String(r.nome).replace(/^=\s*"?|"$/g, '').replace(/\s+/g, ' ').trim().toUpperCase(); r.loja = String(r.loja).trim().toUpperCase();
+      if (!r.nome || !(r.valor >= 0) || !r.dia) erros.push(i + 1); else rows.push(r);
+    });
+    return { rows, erros };
+  }
+  const previewRel = () => {
+    const { rows, erros } = parseRelatorio($('#rTxt').value, $('#rDia').value);
+    const t = rows.reduce((s, r) => s + r.valor, 0), dias = [...new Set(rows.map(r => r.dia))].sort();
+    $('#rPrev').innerHTML = rows.length ? `<b>${rows.length}</b> ${rows.length === 1 ? 'linha' : 'linhas'} · <b>${money(t)}</b> · ${new Set(rows.map(r => r.nome)).size} pessoas · ${dias.length === 1 ? 'dia ' + fmtDate(dias[0]) : dias.length + ' dias (' + fmtDate(dias[0]).slice(0, 5) + ' a ' + fmtDate(dias[dias.length - 1]).slice(0, 5) + ')'}${erros.length ? ` · <span class="late">${erros.length} ignorada(s) sem nome, valor ou dia: linha ${erros.slice(0, 5).join(', ')}${erros.length > 5 ? '…' : ''}</span>` : ''}` : (erros.length && !$('#rDia').value ? 'Escolha o dia acima: o relatório colado não tem coluna de data.' : 'Nada reconhecido ainda.');
+    $('#rOk').disabled = !rows.length;
+  };
+  $('#dColar').addEventListener('click', () => { $('#rTxt').value = ''; $('#rDia').value = isoToday(); $('#rSubst').checked = false; $('#rErr').textContent = ''; previewRel(); $('#dlgDColar').showModal(); });
+  $('#rTxt').addEventListener('input', previewRel);
+  $('#rDia').addEventListener('change', e => { e.stopPropagation(); previewRel(); });
+  $('#dColarForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const { rows } = parseRelatorio($('#rTxt').value, $('#rDia').value); if (!rows.length) return;
+    $('#rOk').disabled = true;
+    let feitos = 0;
+    const dias = new Set(rows.map(r => r.dia));
+    const ok = await write(async () => {
+      if ($('#rSubst').checked) for (const d of [...state.diario.values()].filter(x => dias.has(x.dia))) await state.db.doc('diario/' + d.id).delete();
+      const agora = new Date().toISOString();
+      for (const r of rows) { await state.db.collection('diario').doc().set({ ...r, obs: '', atualizadoEm: agora }); feitos++; $('#rOk').textContent = `Importando ${feitos}/${rows.length}…`; }
+    }, $('#rErr'));
+    $('#rOk').textContent = 'Importar'; $('#rOk').disabled = false;
+    if (ok) { state.dMes = [...dias].sort().pop().slice(0, 7); dias.forEach(d => state.dOpen.add(d)); $('#dlgDColar').close(); toast(`${rows.length} consumos importados`); }
+    else if (feitos) $('#rErr').textContent += ` ${feitos} de ${rows.length} entraram antes do erro.`;
+  });
+
+  document.addEventListener('click', e => {
+    const m = e.target.closest('[data-dmes]');
+    if (m) { state.dMes = m.dataset.dmes; renderDiario(); return; }
+    const dr = e.target.closest('.dia-row');
+    if (dr) { const d = dr.dataset.dia; state.dOpen.has(d) ? state.dOpen.delete(d) : state.dOpen.add(d); renderDiario(); return; }
+    if (e.target.closest('#dExpand')) {
+      const ds = [...new Set(diaRows().map(x => x.dia))];
+      if (ds.length && ds.every(d => state.dOpen.has(d))) state.dOpen.clear(); else ds.forEach(d => state.dOpen.add(d));
+      renderDiario(); return;
+    }
+    const de = e.target.closest('[data-dedit]');
+    if (de) { const d = state.diario.get(de.dataset.dedit); if (d) openDia(d); }
+  });
+  $('#dBusca').addEventListener('input', e => { state.dBusca = e.target.value; renderDiario(); });
 
   // ---------- consumo de colaboradores ----------
   // Cada consumo é um documento em "colab": {mes, colaborador, loja, empresa, data, valor, obs}.
@@ -852,7 +1087,7 @@
       catch { toast('Não foi possível atualizar o Mensal'); }
     }
   });
-  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.loja-row')) { e.preventDefault(); e.target.click(); } });
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.loja-row, .dia-row')) { e.preventDefault(); e.target.click(); } });
   $('#cBusca').addEventListener('input', e => { state.cBusca = e.target.value; renderColab(); });
   $('#cLancBusca').addEventListener('input', e => { state.cLancQ = e.target.value; renderColab(); });
   $('#cLancToggle').addEventListener('click', () => {
@@ -1110,6 +1345,10 @@
     db.collection('meses').onSnapshot(snap => {
       state.months = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
       state.gotMonths = true; render();
+    }, fail);
+    db.collection('diario').onSnapshot(snap => {
+      state.diario = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+      render();
     }, fail);
     db.collection('colab').onSnapshot(snap => {
       state.colab = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
