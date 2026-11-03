@@ -2,6 +2,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,600;1,700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   /* Mesmo sistema do painel Sangria x Extrato: manual do Grupo Ragga, fundo creme, faixa branca
      com fio vermelho Sal (#B81D22), Dotties Vanilla Heavy só no H1 e Instrument Sans no resto.
@@ -297,9 +298,10 @@
   <div id="diario" hidden>
     <div class="dhead">
       <div class="abas" id="dMeses" role="group" aria-label="Período do acompanhamento (16 a 15)"></div>
-      <div class="filtros" data-write>
-        <button class="neutro" id="dColar" type="button">Colar do relatório</button>
-        <button class="pick" id="dAdd" type="button">+ Consumo</button>
+      <div class="filtros">
+        <button class="neutro" id="dExport" type="button" hidden>Exportar</button>
+        <button class="neutro" id="dColar" type="button" data-write>Colar do relatório</button>
+        <button class="pick" id="dAdd" type="button" data-write>+ Consumo</button>
       </div>
     </div>
     <div class="totais" id="dCards"></div>
@@ -917,6 +919,55 @@
   });
   $('#dBusca').addEventListener('input', e => { state.dBusca = e.target.value; renderDiario(); });
 
+  // Exportar: planilha Excel do período aberto, com o detalhe (dia, loja, nome, valor) e o resumo por dia e loja.
+  const ordemLojaX = l => (/^BG\b/.test(l) ? 0 : /^IS\b/.test(l) ? 1 : l === 'SEM LOJA' ? 3 : 2);
+  $('#dExport').addEventListener('click', async () => {
+    const btn = $('#dExport');
+    const rows = diaRows().map(x => ({ ...x, loja: x.loja || 'SEM LOJA' }))
+      .sort((a, b) => a.dia.localeCompare(b.dia) || ordemLojaX(a.loja) - ordemLojaX(b.loja) || natural(a.loja, b.loja) || (Number(b.valor) || 0) - (Number(a.valor) || 0));
+    if (!rows.length) { toast('Nada para exportar neste período'); return; }
+    if (!window.XLSX) { toast('O gerador de planilha não carregou. Recarregue a página e tente de novo.'); return; }
+    const dt = d => new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+    const wd = d => SEMANA[new Date(d + 'T12:00:00').getDay()];
+    const X = window.XLSX, wb = X.utils.book_new();
+    const soma = a => Math.round(a.reduce((s, x) => s + (Number(x.valor) || 0), 0) * 100) / 100;
+    // Formata datas e reais nas colunas indicadas, da linha 2 em diante.
+    const fmt = (ws, colDia, colsValor) => {
+      const ref = X.utils.decode_range(ws['!ref']);
+      for (let R = 1; R <= ref.e.r; R++) {
+        const a = colDia >= 0 && ws[X.utils.encode_cell({ r: R, c: colDia })]; if (a && a.t === 'd') a.z = 'dd/mm/yyyy';
+        colsValor.forEach(c => { const v = ws[X.utils.encode_cell({ r: R, c })]; if (v && v.t === 'n') v.z = '"R$" #,##0.00'; });
+      }
+    };
+    const lojas = [...new Set(rows.map(x => x.loja))].sort((a, b) => ordemLojaX(a) - ordemLojaX(b) || natural(a, b));
+    // 1ª aba: resumo por loja, com o período no topo.
+    const resumo = [[`Vendas a prazo · ${cicloNome(state.dMes)}`], [], ['Loja', 'Pessoas', 'Consumos', 'Total']]
+      .concat(lojas.map(l => { const xs = rows.filter(x => x.loja === l); return [l, new Set(xs.map(x => x.nome)).size, xs.length, soma(xs)]; }));
+    resumo.push([], ['Total do período', new Set(rows.map(x => x.nome)).size, rows.length, soma(rows)]);
+    const wr = X.utils.aoa_to_sheet(resumo); fmt(wr, -1, [3]); wr['!cols'] = [{ wch: 18 }, { wch: 9 }, { wch: 10 }, { wch: 14 }];
+    X.utils.book_append_sheet(wb, wr, 'Resumo');
+    // Uma aba por loja: dia, semana, nome e valor, com subtotal de cada dia e o total da loja.
+    lojas.forEach(l => {
+      const xs = rows.filter(x => x.loja === l);
+      const aoa = [['Dia', 'Semana', 'Nome', 'Valor']];
+      [...new Set(xs.map(x => x.dia))].forEach(d => {
+        const ds = xs.filter(x => x.dia === d);
+        ds.forEach(x => aoa.push([dt(d), wd(d), x.nome, Number(x.valor) || 0]));
+        aoa.push(['', '', `Total ${fmtDate(d).slice(0, 5)}`, soma(ds)]);
+      });
+      aoa.push([], ['', '', `Total ${l}`, soma(xs)]);
+      const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true }); fmt(ws, 0, [3]);
+      ws['!cols'] = [{ wch: 11 }, { wch: 7 }, { wch: 44 }, { wch: 13 }];
+      X.utils.book_append_sheet(wb, ws, l.replace(/[\\/?*[\]:]/g, '-').slice(0, 31));
+    });
+    const data = X.write(wb, { bookType: 'xlsx', type: 'array' });
+    const nome = `Vendas a prazo ${cicloNome(state.dMes).replace(/\//g, '-')}.xlsx`;
+    btn.disabled = true;
+    try { await state.downloads.save({ filename: nome, data }); toast('Planilha exportada'); }
+    catch (e) { if (e?.code === 'rate_limited') toast('Já há uma confirmação aberta. Responda a ela primeiro.'); else if (e?.code !== 'declined') toast('Não foi possível exportar aqui.'); }
+    finally { btn.disabled = false; }
+  });
+
   // ---------- consumo de colaboradores ----------
   // Cada consumo é um documento em "colab": {mes, colaborador, loja, empresa, data, valor, obs}.
   // A aba soma por loja e abre cada loja por colaborador. Período padrão: dia 16 do mês de consumo
@@ -1369,6 +1420,7 @@
     const db = window.claude?.use ? await window.claude.use('db') : null;
     if (!db) { showStatus('<b>Os dados do painel não carregaram nesta visualização.</b><br>Abra o link no claude.ai com sua conta conectada para ver e baixar os recebimentos.'); return; }
     state.db = db;
+    window.claude.use('downloads').then(d => { if (d) { state.downloads = d; $('#dExport').hidden = false; } });
     const user = await window.claude.use('user');
     if (user) { try { const c = await user.can('data.write'); if (c === false) state.canWrite = false; } catch {} }
     const fail = () => showStatus('<b>A conexão com os dados caiu.</b><br>Recarregue a página para continuar.');
