@@ -181,6 +181,12 @@
   .dtab .dia-row{cursor:pointer}
   .dtab .dia-row:hover td{background:#FBF9F4}
   .dtab .dia-row.aberta td{background:var(--sunk);border-bottom-color:var(--line-2)}
+  .dtab tr.dloja{cursor:pointer}
+  .dtab tr.dloja:hover td{background:var(--sunk)}
+  .dtab tr.dloja td{background:#FBF9F4;font-size:12.5px;padding-top:7px;padding-bottom:7px;color:var(--ink-2)}
+  .dtab tr.dloja td:first-child{padding-left:30px}
+  .dtab tr.dloja b{font-weight:700;letter-spacing:.03em;color:var(--ink)}
+  .dtab tr.pessoa td:first-child{padding-left:50px}
   .dtab .wd{font-size:12px;color:var(--ink-3);margin-left:2px}
   .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
   .dtab tr.dia-vazio b{font-weight:500}
@@ -504,7 +510,7 @@
   const saldo = l => isPermuta(l) ? 0 : Math.max((Number(l.valor) || 0) - recebido(l), 0);
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), dMes: null, dOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
   try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
   try { const v = localStorage.getItem('b2b.view'); if (v === 'colab' || v === 'diario') state.view = v; } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
@@ -744,13 +750,16 @@
     const diasCom = new Set(rows.map(d => d.dia));
     const hoje = isoToday();
     const atual = state.dMes === cicloDe(hoje);
-    const vHoje = rows.filter(d => d.dia === hoje).reduce((s, d) => s + (Number(d.valor) || 0), 0);
+    // O relatório sai de manhã, com o dia anterior: a lista vai até ontem (ou até o último dia lançado).
+    const ontem = (() => { const d = new Date(hoje + 'T12:00:00'); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; })();
+    const ultimoLanc = [...diasCom].sort().pop();
+    const ate = [ontem, ultimoLanc || ''].sort().pop();
     $('#dCards').innerHTML = [
       card('', 'Total a prazo no período', money(tot), `${rows.length} ${rows.length === 1 ? 'consumo' : 'consumos'} · ${cicloNome(state.dMes)}`),
       card('', 'Pessoas', String(pessoas.size), `em ${diasCom.size} ${diasCom.size === 1 ? 'dia' : 'dias'} com consumo`),
-      atual
-        ? card('due', 'Hoje', money(vHoje), (n => `${n} ${n === 1 ? 'consumo' : 'consumos'} em ${fmtDate(hoje).slice(0, 5)}`)(rows.filter(d => d.dia === hoje).length))
-        : card('', 'Média por dia', money(diasCom.size ? tot / diasCom.size : 0), 'nos dias com consumo'),
+      ultimoLanc
+        ? card('due', 'Último dia lançado', money(rows.filter(d => d.dia === ultimoLanc).reduce((s, d) => s + (Number(d.valor) || 0), 0)), (n => `${fmtDate(ultimoLanc).slice(0, 5)} ${SEMANA[new Date(ultimoLanc + 'T12:00:00').getDay()]} · ${n} ${n === 1 ? 'consumo' : 'consumos'}`)(rows.filter(d => d.dia === ultimoLanc).length))
+        : card('', 'Último dia lançado', '—', 'nenhum relatório ainda'),
     ].join('');
 
     // Todos os dias do período (16 a 15) até hoje, do mais antigo para o mais recente.
@@ -759,7 +768,7 @@
     const dias = [];
     for (let d = new Date(cicloIni(state.dMes) + 'T12:00:00'); ; d.setDate(d.getDate() + 1)) {
       const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      if (iso > cicloFim(state.dMes) || (atual && iso > hoje)) break;
+      if (iso > cicloFim(state.dMes) || (atual && iso > ate)) break;
       dias.push(iso);
     }
     const visiveis = q ? dias.filter(d => (porDia[d] || []).some(x => String(x.nome).toLowerCase().includes(q))) : dias;
@@ -777,12 +786,21 @@
       const wd = SEMANA[new Date(d + 'T12:00:00').getDay()];
       const nomes = new Set(ls.map(x => x.nome)).size;
       html += `<tr class="${ls.length ? 'dia-row' : 'dia-vazio'}${open ? ' aberta' : ''}"${ls.length ? ` data-dia="${d}" tabindex="0" aria-expanded="${!!open}"` : ''}>
-        <td><span class="seta" aria-hidden="true">${ls.length ? (open ? '▾' : '▸') : ''}</span> <b>${fmtDate(d).slice(0, 5)}</b> <span class="wd">${wd}</span>${d === hoje ? '<span class="tag grupo">hoje</span>' : ''}</td>
+        <td><span class="seta" aria-hidden="true">${ls.length ? (open ? '▾' : '▸') : ''}</span> <b>${fmtDate(d).slice(0, 5)}</b> <span class="wd">${wd}</span></td>
         <td class="r">${ls.length ? nomes : '—'}</td><td class="r">${ls.length || '—'}</td>
         <td class="r money">${ls.length ? money(v) : '<span class="note">—</span>'}</td><td class="r"><span class="note">${money(acumulado[d])}</span></td></tr>`;
-      if (open) ls.slice().sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0) || String(a.nome).localeCompare(String(b.nome)))
-        .filter(x => !q || String(x.nome).toLowerCase().includes(q))
-        .forEach(x => { html += `<tr class="pessoa"><td>${esc(x.nome)}${x.loja ? `<span class="tag">${esc(x.loja)}</span>` : ''}${x.obs ? `<span class="onde">${esc(x.obs)}</span>` : ''}</td><td></td><td></td><td class="r money">${money(x.valor)}</td><td class="r">${state.canWrite ? `<button class="limpar" data-dedit="${esc(x.id)}">Editar</button>` : ''}</td></tr>`; });
+      // Dentro do dia: uma faixa por loja (com o total dela) e, embaixo, quem consumiu ali.
+      if (open) {
+        const porLoja = {};
+        ls.filter(x => !q || String(x.nome).toLowerCase().includes(q)).forEach(x => (porLoja[x.loja || 'SEM LOJA'] ||= []).push(x));
+        const ordemLoja = l => (/^BG\b/.test(l) ? 0 : /^IS\b/.test(l) ? 1 : l === 'SEM LOJA' ? 3 : 2);
+        Object.keys(porLoja).sort((a, b) => ordemLoja(a) - ordemLoja(b) || natural(a, b)).forEach(lj => {
+          const xs = porLoja[lj].sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0) || String(a.nome).localeCompare(String(b.nome)));
+          const k = d + '|' + lj, lo = state.dLojaOpen.has(k) || !!q;
+          html += `<tr class="dloja${lo ? ' aberta' : ''}" data-dl="${esc(k)}" tabindex="0" aria-expanded="${lo}"><td><span class="seta" aria-hidden="true">${lo ? '▾' : '▸'}</span> <b>${esc(lj)}</b></td><td class="r">${new Set(xs.map(x => x.nome)).size}</td><td class="r">${xs.length}</td><td class="r money">${money(xs.reduce((s, x) => s + (Number(x.valor) || 0), 0))}</td><td></td></tr>`;
+          if (lo) xs.forEach(x => { html += `<tr class="pessoa"><td>${esc(x.nome)}${x.obs ? `<span class="onde">${esc(x.obs)}</span>` : ''}</td><td></td><td></td><td class="r money">${money(x.valor)}</td><td class="r">${state.canWrite ? `<button class="limpar" data-dedit="${esc(x.id)}">Editar</button>` : ''}</td></tr>`; });
+        });
+      }
     });
     html += `</tbody>${rows.length ? `<tfoot><tr><td>Total do período</td><td class="r">${pessoas.size}</td><td class="r">${rows.length}</td><td class="r money">${money(tot)}</td><td></td></tr></tfoot>` : ''}`;
     $('#dTab').innerHTML = html;
@@ -884,11 +902,14 @@
   document.addEventListener('click', e => {
     const m = e.target.closest('[data-dmes]');
     if (m) { state.dMes = m.dataset.dmes; renderDiario(); return; }
+    const dl = e.target.closest('.dloja');
+    if (dl) { const k = dl.dataset.dl; state.dLojaOpen.has(k) ? state.dLojaOpen.delete(k) : state.dLojaOpen.add(k); renderDiario(); return; }
     const dr = e.target.closest('.dia-row');
     if (dr) { const d = dr.dataset.dia; state.dOpen.has(d) ? state.dOpen.delete(d) : state.dOpen.add(d); renderDiario(); return; }
     if (e.target.closest('#dExpand')) {
       const ds = [...new Set(diaRows().map(x => x.dia))];
-      if (ds.length && ds.every(d => state.dOpen.has(d))) state.dOpen.clear(); else ds.forEach(d => state.dOpen.add(d));
+      if (ds.length && ds.every(d => state.dOpen.has(d))) { state.dOpen.clear(); state.dLojaOpen.clear(); }
+      else { ds.forEach(d => state.dOpen.add(d)); diaRows().forEach(x => state.dLojaOpen.add(x.dia + '|' + (x.loja || 'SEM LOJA'))); }
       renderDiario(); return;
     }
     const de = e.target.closest('[data-dedit]');
@@ -1096,7 +1117,7 @@
       catch { toast('Não foi possível atualizar o Mensal'); }
     }
   });
-  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.loja-row, .dia-row')) { e.preventDefault(); e.target.click(); } });
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.loja-row, .dia-row, .dloja')) { e.preventDefault(); e.target.click(); } });
   $('#cBusca').addEventListener('input', e => { state.cBusca = e.target.value; renderColab(); });
   $('#cLancBusca').addEventListener('input', e => { state.cLancQ = e.target.value; renderColab(); });
   $('#cLancToggle').addEventListener('click', () => {
