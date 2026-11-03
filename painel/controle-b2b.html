@@ -798,7 +798,7 @@
           const xs = porLoja[lj].sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0) || String(a.nome).localeCompare(String(b.nome)));
           const k = d + '|' + lj, lo = state.dLojaOpen.has(k) || !!q;
           html += `<tr class="dloja${lo ? ' aberta' : ''}" data-dl="${esc(k)}" tabindex="0" aria-expanded="${lo}"><td><span class="seta" aria-hidden="true">${lo ? '▾' : '▸'}</span> <b>${esc(lj)}</b></td><td class="r">${new Set(xs.map(x => x.nome)).size}</td><td class="r">${xs.length}</td><td class="r money">${money(xs.reduce((s, x) => s + (Number(x.valor) || 0), 0))}</td><td></td></tr>`;
-          if (lo) xs.forEach(x => { html += `<tr class="pessoa"><td>${esc(x.nome)}${x.obs ? `<span class="onde">${esc(x.obs)}</span>` : ''}</td><td></td><td></td><td class="r money">${money(x.valor)}</td><td class="r">${state.canWrite ? `<button class="limpar" data-dedit="${esc(x.id)}">Editar</button>` : ''}</td></tr>`; });
+          if (lo) xs.forEach(x => { html += `<tr class="pessoa"><td>${esc(x.nome)}</td><td></td><td></td><td class="r money">${money(x.valor)}</td><td></td></tr>`; });
         });
       }
     });
