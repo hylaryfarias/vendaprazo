@@ -188,6 +188,8 @@
   .dtab tr.dloja td:first-child{padding-left:30px}
   .dtab tr.dloja b{font-weight:700;letter-spacing:.03em;color:var(--ink)}
   .dtab tr.pessoa td:first-child{padding-left:50px}
+  .dper{font-size:13px;color:var(--ink-2)}
+  .dper b{color:var(--ink)}
   .dtab .wd{font-size:12px;color:var(--ink-3);margin-left:2px}
   .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
   .dtab tr.dia-vazio b{font-weight:500}
@@ -575,7 +577,7 @@
       showStatus('<b>Nenhum mês aberto ainda.</b><br>Use <b>Novo mês</b> para começar.');
       renderMonthNav(list); return;
     }
-    if (!state.cur || !list.includes(state.cur)) state.cur = list.includes('2026-09') ? '2026-09' : list[list.length - 1];
+    if (!state.cur || !list.includes(state.cur)) state.cur = list[list.length - 1];
     renderMonthNav(list);
     $('#status').hidden = true;
     const colab = state.view === 'colab', diario = state.view === 'diario';
@@ -605,7 +607,7 @@
       const sub = on ? `consumo de ${MESES[+m.slice(5, 7) - 1]}${meta.fechamento ? ' · fecha ' + fmtDate(meta.fechamento).slice(0, 5) : ''}`
                      : `consumo de ${MESES[+m.slice(5, 7) - 1]} · ${ls.length} ${ls.length === 1 ? 'lançamento' : 'lançamentos'}`;
       return `<button type="button" class="mes${on ? ' ativo' : ''}" data-month="${m}" aria-current="${on ? 'true' : 'false'}"><b>${esc(monthName(recOf(m)))}</b><small>${esc(sub)}</small><i aria-hidden="true">${on ? '⌄' : '›'}</i></button>`
-        + (on ? `<div class="sub-mes"><a href="#book-mensal" data-v="b2b">Mensal <span>${money(tot('mensal'))}</span></a><a href="#book-semanal" data-v="b2b">Semanal <span>${money(tot('semanal'))}</span></a><a href="#c-lojas" data-v="colab">Colaboradores <span>${money([...state.colab.values()].filter(c => c.mes === m).reduce((s, c) => s + (Number(c.valor) || 0), 0))}</span></a><a href="#resumo" data-v="b2b">Resumo WhatsApp</a></div>` : '');
+        + (on ? `<div class="sub-mes"><a href="#book-mensal" data-v="b2b">Mensal <span>${money(tot('mensal'))}</span></a><a href="#book-semanal" data-v="b2b">Semanal <span>${money(tot('semanal'))}</span></a><a href="#c-lojas" data-v="colab">Colaboradores <span>${money([...state.colab.values()].filter(c => c.mes === m).reduce((s, c) => s + (Number(c.valor) || 0), 0))}</span></a><a href="#d-dias" data-v="diario">Acompanhamento diário${(t => t ? ` <span>${money(t)}</span>` : '')([...state.diario.values()].filter(d => d.dia && d.dia >= DIARIO_DESDE && cicloDe(d.dia) === addMonths(m, 1)).reduce((s, d) => s + (Number(d.valor) || 0), 0))}</a><a href="#resumo" data-v="b2b">Resumo WhatsApp</a></div>` : '');
     }).join('');
     const bits = [];
     if (state.cur) bits.push(`<span><span class="ponto"></span>Consumo de <b>${esc(monthName(state.cur))}</b> · recebimento em <b>${esc(monthName(recOf(state.cur)))}</b></span>`);
@@ -742,9 +744,16 @@
   const cicloNome = c => `${fmtDate(cicloIni(c)).slice(0, 5)} a ${fmtDate(cicloFim(c)).slice(0, 5)}`;
   const diaRows = () => [...state.diario.values()].filter(d => d.dia && d.dia >= DIARIO_DESDE && cicloDe(d.dia) === state.dMes);
   function renderDiario() {
-    const meses = [...new Set([...state.diario.values()].filter(d => d.dia && d.dia >= DIARIO_DESDE).map(d => cicloDe(d.dia)).concat(cicloDe(isoToday())))].sort().reverse();
-    if (!state.dMes || !meses.includes(state.dMes)) state.dMes = meses[0];
-    $('#dMeses').innerHTML = meses.map(m => `<button type="button" class="aba${m === state.dMes ? ' ativa' : ''}" data-dmes="${m}" aria-pressed="${m === state.dMes}">${esc(cicloNome(m))}</button>`).join('');
+    // O período acompanha o mês escolhido na coluna da esquerda: NOVEMBRO 2026 (consumo de outubro) = 16/10 a 15/11.
+    state.dMes = addMonths(state.cur, 1);
+    const antes = cicloFim(state.dMes) < DIARIO_DESDE;
+    $('#dMeses').innerHTML = `<span class="dper">Período <b>${esc(antes ? '—' : cicloNome(state.dMes))}</b> · recebimento em ${esc(monthName(state.dMes))}</span>`;
+    if (antes) {
+      $('#dCards').innerHTML = '';
+      $('#dSub').textContent = '';
+      $('#dTab').innerHTML = `<tbody><tr><td class="empty">O acompanhamento diário começou em 01/11. Ele fica em <b>NOVEMBRO 2026</b> e nos meses seguintes, na coluna da esquerda.</td></tr></tbody>`;
+      return;
+    }
 
     const rows = diaRows(), q = state.dBusca.trim().toLowerCase();
     const tot = rows.reduce((s, d) => s + (Number(d.valor) || 0), 0);
@@ -832,7 +841,7 @@
       if (dEditId) await state.db.doc('diario/' + dEditId).update(body);
       else await state.db.collection('diario').doc().set(body);
     }, $('#qErr'));
-    if (ok) { state.dMes = cicloDe(body.dia); state.dOpen.add(body.dia); $('#dlgDia').close(); toast(dEditId ? 'Consumo atualizado' : 'Consumo incluído'); }
+    if (ok) { const m = addMonths(cicloDe(body.dia), -1); if (monthList().includes(m)) state.cur = m; state.dOpen.add(body.dia); $('#dlgDia').close(); toast(dEditId ? 'Consumo atualizado' : 'Consumo incluído'); }
   });
   $('#qDel').addEventListener('click', async () => {
     if (!dDelArmed) { dDelArmed = true; $('#qDel').textContent = 'Clique de novo para excluir'; return; }
@@ -897,7 +906,7 @@
       for (const r of rows) { await state.db.collection('diario').doc().set({ ...r, obs: '', atualizadoEm: agora }); feitos++; $('#rOk').textContent = `Importando ${feitos}/${rows.length}…`; }
     }, $('#rErr'));
     $('#rOk').textContent = 'Importar'; $('#rOk').disabled = false;
-    if (ok) { state.dMes = cicloDe([...dias].sort().pop()); dias.forEach(d => state.dOpen.add(d)); $('#dlgDColar').close(); toast(`${rows.length} consumos importados`); }
+    if (ok) { const m = addMonths(cicloDe([...dias].sort().pop()), -1); if (monthList().includes(m)) state.cur = m; dias.forEach(d => state.dOpen.add(d)); $('#dlgDColar').close(); toast(`${rows.length} consumos importados`); }
     else if (feitos) $('#rErr').textContent += ` ${feitos} de ${rows.length} entraram antes do erro.`;
   });
 
