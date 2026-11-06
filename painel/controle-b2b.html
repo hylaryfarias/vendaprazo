@@ -675,9 +675,13 @@
     if (/^MEL\b|^INSTITUTO MESA VIVA|^HOLDING/.test(e)) return 'grupo';
     return 'parceiras';
   }
-  function secoesHtml(rows) {
+  // Ordem fixa das parceiras (quando a tabela não está ordenada por coluna); quem não estiver na lista vem no fim.
+  const ORDEM_PARCEIRAS = [/ALISON/, /HELP DESK|FLAVIO/, /BCALDI/, /FAST ARIAM/, /MDFA/, /MIDIOGRAF/, /TSB/, /KOBRATEC/, /UNIVERSIDADE ESTADUAL|\bUEL\b/, /^MS SERV/, /SALUSSEG/, /OBRAMAX/, /RICARDO MULLER/];
+  const posParceira = l => { const e = String(l.empresa || '').toUpperCase(); const i = ORDEM_PARCEIRAS.findIndex(re => re.test(e)); return i < 0 ? 99 : i; };
+  function secoesHtml(rows, ordenado) {
     return SECOES.map(([k, nome]) => {
-      const rs = rows.filter(l => secaoDe(l) === k);
+      let rs = rows.filter(l => secaoDe(l) === k);
+      if (k === 'parceiras' && !ordenado) rs = rs.map((l, i) => [l, i]).sort((a, b) => posParceira(a[0]) - posParceira(b[0]) || a[1] - b[1]).map(x => x[0]);
       if (!rs.length) return '';
       const tot = rs.reduce((s, l) => s + (Number(l.valor) || 0), 0), rec = rs.reduce((s, l) => s + recebido(l), 0);
       return `<tr class="secao"><td colspan="2"><b>${esc(nome)}</b> <span class="note">${rs.length} ${rs.length === 1 ? 'empresa' : 'empresas'}</span></td><td class="r money">${money(tot)}</td><td colspan="3"></td><td class="r money">${rec ? money(rec) : ''}</td><td colspan="2"></td></tr>` + rs.map(rowHtml).join('');
@@ -729,7 +733,7 @@
       <div class="tbox"><div class="tablewrap"><table>
         <thead><tr>${thHead}<th class="r">${so || nColF ? `<button type="button" class="limpar" data-clearcols="${bloco}">limpar ${so && nColF ? 'filtros e ordem' : nColF ? 'filtros' : 'ordem'}</button>` : '<span class="sr">Ações</span>'}</th></tr>
         <tr class="frow">${thFilt}<th class="fcell"></th></tr></thead>
-        <tbody>${rows.length ? (bloco === 'mensal' ? secoesHtml(rows) : rows.map(rowHtml).join('')) : `<tr><td colspan="9" class="empty">${all.length ? 'Nenhuma linha neste filtro.' : 'Nenhum lançamento ainda. Use <b>+ Lançamento</b> para incluir.'}</td></tr>`}</tbody>
+        <tbody>${rows.length ? (bloco === 'mensal' ? secoesHtml(rows, !!so) : rows.map(rowHtml).join('')) : `<tr><td colspan="9" class="empty">${all.length ? 'Nenhuma linha neste filtro.' : 'Nenhum lançamento ainda. Use <b>+ Lançamento</b> para incluir.'}</td></tr>`}</tbody>
         ${rows.length ? `<tfoot><tr><td colspan="2">Total ${filtrado ? `filtrado · ${rows.length} de ${all.length}` : ''}</td><td class="r money">${money(rows.reduce((s, l) => s + (Number(l.valor) || 0), 0))}</td><td colspan="3"></td><td class="r money">${money(rows.reduce((s, l) => s + recebido(l), 0))}</td><td colspan="2"></td></tr></tfoot>` : ''}
       </table></div></div>`;
     if (focusId) { const i = document.getElementById(focusId); if (i) { i.focus(); try { if (selr) i.setSelectionRange(selr[0], selr[1]); } catch {} } }
