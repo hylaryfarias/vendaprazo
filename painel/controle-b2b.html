@@ -151,6 +151,11 @@
   .lojatxt{white-space:nowrap;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
   .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);
     background:var(--surface);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+  td.money .enc{display:block;font-size:10.5px;font-weight:500;color:var(--ink-3);white-space:nowrap}
+  td.money .enc.atraso{color:var(--brand);font-weight:600}
+  .enc-box{font-size:12px;color:var(--ink-2);margin-top:2px;min-height:1em}
+  #payEnc{background:var(--warn-soft);border-radius:8px;padding:8px 10px}
+  #payEnc:empty{display:none}
   tr.secao td{background:#F6EFE3;border-top:2px solid var(--line-2);font-size:12.5px;padding-top:9px;padding-bottom:9px}
   tr.secao b{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brand)}
   tr.secao .note{margin-left:6px}
@@ -331,6 +336,7 @@
   <form id="payForm" method="dialog">
     <h3>Baixar pagamento</h3>
     <div class="who" id="payWho"></div>
+    <div class="enc-box" id="payEnc"></div>
     <div class="grid2">
       <div class="fld"><label for="payDate">Data do pagamento</label><input id="payDate" type="date" required></div>
       <div class="fld"><label for="payVal">Valor recebido (R$)</label><input id="payVal" type="text" inputmode="decimal" required></div>
@@ -359,7 +365,7 @@
       <div class="fld full"><label for="fEmpresa">Empresa</label><input id="fEmpresa" type="text" required></div>
       <div class="fld"><label for="fCnpj">CNPJ / CPF</label><input id="fCnpj" type="text"></div>
       <div class="fld"><label for="fLoja">Loja de consumo</label><input id="fLoja" type="text" placeholder="BG 01, IS 01, TODAS…"></div>
-      <div class="fld"><label for="fValor">Valor (R$)</label><input id="fValor" type="text" inputmode="decimal" required></div>
+      <div class="fld"><label for="fValor">Valor (R$)</label><input id="fValor" type="text" inputmode="decimal" required><span class="enc-box" id="fEnc"></span></div>
       <div class="fld"><label for="fForma">Forma de pagamento</label>
         <select id="fForma"><option>BOLETO</option><option>PIX</option><option>TED</option><option>PERMUTA</option><option>CARTÃO</option><option>DINHEIRO</option></select></div>
       <div class="fld"><label for="fPrev">Previsão de recebimento</label><input id="fPrev" type="date"></div>
@@ -517,6 +523,20 @@
     return 'aberto';
   }
   const saldo = l => isPermuta(l) ? 0 : Math.max((Number(l.valor) || 0) - recebido(l), 0);
+  // Boleto em atraso: multa de 2% (uma vez só) + juros de 1% ao mês, contados por dia (valor × 1% ÷ 30).
+  const ehBoleto = l => String(l.forma || '').toUpperCase() === 'BOLETO';
+  function encargos(valor, previsao, ate) {
+    valor = Number(valor) || 0;
+    const multa = Math.round(valor * 0.02 * 100) / 100, jurosDia = Math.round(valor * 0.01 / 30 * 100) / 100;
+    const dias = previsao && ate && ate > previsao ? daysBetween(previsao, ate) : 0;
+    const juros = Math.round(valor * 0.01 / 30 * dias * 100) / 100;
+    return { multa, jurosDia, dias, juros, total: dias > 0 ? Math.round((valor + multa + juros) * 100) / 100 : valor };
+  }
+  const encTexto = (valor, previsao, ate) => {
+    const e = encargos(valor, previsao, ate);
+    return { e, base: `multa ${money(e.multa)} · juros ${money(e.jurosDia)}/dia`,
+      atraso: e.dias > 0 ? `${e.dias} ${e.dias === 1 ? 'dia' : 'dias'} de atraso: multa ${money(e.multa)} + juros ${money(e.juros)} = ${money(e.total)}` : '' };
+  };
 
   // ---------- state ----------
   const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
@@ -753,7 +773,7 @@
     return `<tr>
       <td class="emp"><div class="co">${esc(l.empresa)}${tag}</div>${l.cnpj ? `<div class="meta">${esc(l.cnpj)}</div>` : ''}</td>
       <td><span class="lojatxt">${esc(l.loja || '')}</span></td>
-      <td class="r money">${money(l.valor)}</td>
+      <td class="r money">${money(l.valor)}${ehBoleto(l) && Number(l.valor) > 0 ? (t => `<span class="enc">${t.base}</span>${t.e.dias > 0 && (!l.dataPagamento || s === 'parcial') ? `<span class="enc atraso">hoje ${money(t.e.total)} · ${t.e.dias}d</span>` : ''}`)(encTexto(l.valor, l.previsao, l.dataPagamento && s !== 'parcial' ? l.dataPagamento : isoToday())) : ''}</td>
       <td>${esc(l.forma || '')}</td>
       <td class="when">${when}</td>
       <td><span class="note">${esc(l.obs || '')}</span></td>
@@ -1352,7 +1372,7 @@
     $('#payObs').value = l.obsPagamento || '';
     $('#payUndo').hidden = !l.dataPagamento;
     $('#payErr').textContent = '';
-    $('#dlgPay').showModal();
+    $('#dlgPay').showModal(); atualizaEncPay();
   }
   $('#payForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -1381,6 +1401,7 @@
     $('#fCnpj').value = l?.cnpj || '';
     $('#fLoja').value = l?.loja || '';
     $('#fValor').value = l ? moneyInput(l.valor) : '';
+    setTimeout(atualizaEncForm, 0);
     const forma = (l?.forma || 'BOLETO').toUpperCase().startsWith('PERMU') ? 'PERMUTA' : (l?.forma || 'BOLETO');
     if (![...$('#fForma').options].some(o => o.value === forma)) $('#fForma').add(new Option(forma));
     $('#fForma').value = forma;
@@ -1414,6 +1435,24 @@
     const ok = await write(() => state.db.doc('lancamentos/' + editId).delete(), $('#editErr'));
     if (ok) { $('#dlgEdit').close(); toast('Lançamento excluído'); }
   });
+
+  // Multa e juros no formulário: aparece para boleto assim que o valor é digitado.
+  function atualizaEncForm() {
+    const v = parseMoney($('#fValor').value), box = $('#fEnc');
+    if ($('#fForma').value !== 'BOLETO' || !(v > 0)) { box.textContent = ''; return; }
+    const t = encTexto(v, $('#fPrev').value, isoToday());
+    box.textContent = `Multa 2%: ${money(t.e.multa)} · Juros por dia: ${money(t.e.jurosDia)}` + (t.atraso ? ` · Hoje, ${t.atraso}` : '');
+  }
+  ['#fValor', '#fForma', '#fPrev'].forEach(id => { $(id).addEventListener('input', atualizaEncForm); $(id).addEventListener('change', atualizaEncForm); });
+  // Na baixa: valor com encargos até a data do pagamento escolhida.
+  function atualizaEncPay() {
+    const l = state.lancs.get(payId), box = $('#payEnc');
+    if (!l || !ehBoleto(l) || !(Number(l.valor) > 0)) { box.textContent = ''; return; }
+    const t = encTexto(l.valor, l.previsao, $('#payDate').value || isoToday());
+    box.innerHTML = t.e.dias > 0 ? `Pago em ${fmtDate($('#payDate').value)}: ${esc(t.atraso)} <button type="button" class="limpar" id="payUsaEnc">usar ${money(t.e.total)}</button>` : `No prazo · se atrasar: ${esc(t.base)}`;
+  }
+  $('#payDate').addEventListener('change', atualizaEncPay);
+  document.addEventListener('click', e => { if (e.target.id === 'payUsaEnc') { const l = state.lancs.get(payId); if (l) $('#payVal').value = moneyInput(encargos(l.valor, l.previsao, $('#payDate').value).total); } });
 
   // Novo mês
   $('#newMonthBtn').addEventListener('click', () => {
