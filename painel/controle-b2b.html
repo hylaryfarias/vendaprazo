@@ -151,6 +151,9 @@
   .lojatxt{white-space:nowrap;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
   .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);
     background:var(--surface);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+  tr.secao td{background:#F6EFE3;border-top:2px solid var(--line-2);font-size:12.5px;padding-top:9px;padding-bottom:9px}
+  tr.secao b{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--brand)}
+  tr.secao .note{margin-left:6px}
   .tag.grupo{color:var(--brand);border-color:var(--brand-soft);background:var(--brand-soft)}
   .pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:4px 12px;white-space:nowrap}
   .st-aberto{background:var(--info-soft);color:var(--info)}
@@ -361,6 +364,8 @@
         <select id="fForma"><option>BOLETO</option><option>PIX</option><option>TED</option><option>PERMUTA</option><option>CARTÃO</option><option>DINHEIRO</option></select></div>
       <div class="fld"><label for="fPrev">Previsão de recebimento</label><input id="fPrev" type="date"></div>
       <div class="fld"><label for="fPrevNota">Previsão (texto)</label><input id="fPrevNota" type="text" placeholder="Se não tiver data. Ex.: MONALISA"></div>
+      <div class="fld full"><label for="fSecao">Seção no Mensal</label>
+        <select id="fSecao"><option value="">automática (pelo nome)</option><option value="parceiras">Empresas parceiras</option><option value="lojas">Lojas</option><option value="grupo">Empresas do Grupo</option><option value="colaboradores">Consumo colaboradores</option></select></div>
       <div class="fld full"><label for="fGrupo">Grupo</label><input id="fGrupo" type="text" list="gruposList" placeholder="Ex.: LOJAS · soma junto no resumo do WhatsApp"><datalist id="gruposList"></datalist></div>
       <div class="fld full"><label for="fObs">Observação</label><input id="fObs" type="text" placeholder="NF OK, consumo 28-09 a 04-10…"></div>
     </div>
@@ -659,6 +664,26 @@
     return `<div class="tot ${kind}"><div class="k">${label}</div><div class="v" title="${esc(value)}">${value}</div><div class="n">${sub}</div></div>`;
   }
 
+  // Seções do Mensal: cada empresa cai num bloco; dá para escolher no Editar (campo Seção).
+  // Sem escolha, o bloco sai do nome: LOJAS pelo grupo, consumo de colaboradores, empresas do grupo e o resto como parceiras.
+  const SECOES = [['parceiras', 'Empresas parceiras'], ['lojas', 'Lojas'], ['grupo', 'Empresas do Grupo'], ['colaboradores', 'Consumo colaboradores']];
+  function secaoDe(l) {
+    if (l.secao && SECOES.some(([k]) => k === l.secao)) return l.secao;
+    const e = String(l.empresa || '').toUpperCase();
+    if (/^CONSUMO COLABORADORES/.test(e)) return 'colaboradores';
+    if (l.grupo === 'LOJAS') return 'lojas';
+    if (/^MEL\b|^INSTITUTO MESA VIVA|^HOLDING/.test(e)) return 'grupo';
+    return 'parceiras';
+  }
+  function secoesHtml(rows) {
+    return SECOES.map(([k, nome]) => {
+      const rs = rows.filter(l => secaoDe(l) === k);
+      if (!rs.length) return '';
+      const tot = rs.reduce((s, l) => s + (Number(l.valor) || 0), 0), rec = rs.reduce((s, l) => s + recebido(l), 0);
+      return `<tr class="secao"><td colspan="2"><b>${esc(nome)}</b> <span class="note">${rs.length} ${rs.length === 1 ? 'empresa' : 'empresas'}</span></td><td class="r money">${money(tot)}</td><td colspan="3"></td><td class="r money">${rec ? money(rec) : ''}</td><td colspan="2"></td></tr>` + rs.map(rowHtml).join('');
+    }).join('');
+  }
+
   function renderBook(bloco, title, all) {
     const el = $('#book-' + bloco);
     const f = state.filter[bloco], q = state.q[bloco].trim().toLowerCase();
@@ -704,7 +729,7 @@
       <div class="tbox"><div class="tablewrap"><table>
         <thead><tr>${thHead}<th class="r">${so || nColF ? `<button type="button" class="limpar" data-clearcols="${bloco}">limpar ${so && nColF ? 'filtros e ordem' : nColF ? 'filtros' : 'ordem'}</button>` : '<span class="sr">Ações</span>'}</th></tr>
         <tr class="frow">${thFilt}<th class="fcell"></th></tr></thead>
-        <tbody>${rows.length ? rows.map(rowHtml).join('') : `<tr><td colspan="9" class="empty">${all.length ? 'Nenhuma linha neste filtro.' : 'Nenhum lançamento ainda. Use <b>+ Lançamento</b> para incluir.'}</td></tr>`}</tbody>
+        <tbody>${rows.length ? (bloco === 'mensal' ? secoesHtml(rows) : rows.map(rowHtml).join('')) : `<tr><td colspan="9" class="empty">${all.length ? 'Nenhuma linha neste filtro.' : 'Nenhum lançamento ainda. Use <b>+ Lançamento</b> para incluir.'}</td></tr>`}</tbody>
         ${rows.length ? `<tfoot><tr><td colspan="2">Total ${filtrado ? `filtrado · ${rows.length} de ${all.length}` : ''}</td><td class="r money">${money(rows.reduce((s, l) => s + (Number(l.valor) || 0), 0))}</td><td colspan="3"></td><td class="r money">${money(rows.reduce((s, l) => s + recebido(l), 0))}</td><td colspan="2"></td></tr></tfoot>` : ''}
       </table></div></div>`;
     if (focusId) { const i = document.getElementById(focusId); if (i) { i.focus(); try { if (selr) i.setSelectionRange(selr[0], selr[1]); } catch {} } }
@@ -1345,6 +1370,7 @@
     $('#fBloco').value = l?.bloco || 'mensal';
     $('#fTag').value = l?.tag || '';
     $('#fGrupo').value = l?.grupo || '';
+    $('#fSecao').value = l?.secao || '';
     $('#gruposList').innerHTML = [...new Set([...state.lancs.values()].map(x => x.grupo).filter(Boolean))].sort().map(g => `<option value="${esc(g)}">`).join('');
     $('#fEmpresa').value = l?.empresa || '';
     $('#fCnpj').value = l?.cnpj || '';
@@ -1367,7 +1393,7 @@
     if (!$('#fEmpresa').value.trim()) { $('#editErr').textContent = 'Informe a empresa.'; return; }
     if (!(valor >= 0)) { $('#editErr').textContent = 'Valor inválido. Use o formato 1.234,56.'; return; }
     const body = {
-      bloco: $('#fBloco').value, tag: $('#fTag').value, grupo: $('#fGrupo').value.trim().toUpperCase(), empresa: $('#fEmpresa').value.trim().toUpperCase(),
+      bloco: $('#fBloco').value, tag: $('#fTag').value, grupo: $('#fGrupo').value.trim().toUpperCase(), secao: $('#fSecao').value, empresa: $('#fEmpresa').value.trim().toUpperCase(),
       cnpj: $('#fCnpj').value.trim(), loja: $('#fLoja').value.trim().toUpperCase(), valor,
       forma: $('#fForma').value, previsao: $('#fPrev').value, previsaoNota: $('#fPrevNota').value.trim(),
       obs: $('#fObs').value.trim(), atualizadoEm: new Date().toISOString(),
@@ -1414,7 +1440,7 @@
           let prev = '';
           if (l.previsao) prev = isPermuta(l) ? '' : (l.forma === 'BOLETO' && prevPadrao ? prevPadrao : addMonths(l.previsao.slice(0, 7), 1) + l.previsao.slice(7));
           await state.db.collection('lancamentos').doc().set({
-            mes: c, bloco: 'mensal', ordem: l.ordem ?? 0, empresa: l.empresa, cnpj: l.cnpj || '', loja: l.loja || '', tag: l.tag || '', grupo: l.grupo || '',
+            mes: c, bloco: 'mensal', ordem: l.ordem ?? 0, empresa: l.empresa, cnpj: l.cnpj || '', loja: l.loja || '', tag: l.tag || '', grupo: l.grupo || '', secao: l.secao || '',
             forma: l.forma || '', valor: 0, previsao: prev, previsaoNota: l.previsaoNota || '', obs: '',
             dataPagamento: '', valorRecebido: null, obsPagamento: '', atualizadoEm: new Date().toISOString(),
           });
