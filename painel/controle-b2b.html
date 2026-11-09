@@ -747,6 +747,7 @@
       <div class="shead">
         <div class="esq"><h2>${title}</h2><small>${money(total)} · ${all.length} ${all.length === 1 ? 'linha' : 'linhas'}</small></div>
         <div class="filtros">
+          ${state.downloads ? `<button type="button" class="neutro" data-xlsx="${bloco}">Exportar Excel</button>` : ''}
           ${chips.map(([k, l, n]) => `<button type="button" class="aba${f === k ? ' ativa' : ''}" data-bloco="${bloco}" data-filter="${k}" aria-pressed="${f === k}">${l}<small>${n}</small></button>`).join('')}
           <input class="busca" id="q-${bloco}" type="search" placeholder="Buscar empresa, CNPJ, loja" value="${esc(state.q[bloco])}" aria-label="Buscar no bloco ${esc(title)}">
         </div>
@@ -1454,6 +1455,50 @@
   $('#payDate').addEventListener('change', atualizaEncPay);
   document.addEventListener('click', e => { if (e.target.id === 'payUsaEnc') { const l = state.lancs.get(payId); if (l) $('#payVal').value = moneyInput(encargos(l.valor, l.previsao, $('#payDate').value).total); } });
 
+  // Exportar Excel do Mensal (em blocos, com subtotais) ou do Semanal, do mês aberto. Traz todas as linhas, sem filtro.
+  async function exportarBloco(bloco, btn) {
+    if (!window.XLSX) { toast('O gerador de planilha não carregou. Recarregue a página e tente de novo.'); return; }
+    const all = [...state.lancs.values()].filter(l => l.mes === state.cur && (l.bloco || 'mensal') === bloco)
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || String(a.empresa).localeCompare(String(b.empresa)));
+    if (!all.length) { toast('Nada para exportar neste mês'); return; }
+    const X = window.XLSX, r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+    const dt = iso => iso ? new Date(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) : '';
+    const cab = ['Empresa', 'CNPJ/CPF', 'Loja', 'Valor', 'Forma', 'Previsão', 'Observação', 'Data pagamento', 'Valor recebido', 'Status', 'Multa 2%', 'Juros por dia'];
+    const linha = l => {
+      const b = ehBoleto(l) && Number(l.valor) > 0 ? encargos(l.valor, l.previsao, isoToday()) : null;
+      return [l.empresa || '', l.cnpj || '', l.loja || '', r2(l.valor), l.forma || '', l.previsao ? dt(l.previsao) : (l.previsaoNota || ''), l.obs || '',
+        l.dataPagamento ? dt(l.dataPagamento) : '', l.dataPagamento ? r2(l.valorRecebido) : '', STATUS[statusOf(l)].label, b ? b.multa : '', b ? b.jurosDia : ''];
+    };
+    const aoa = [[`${bloco === 'mensal' ? 'Mensal' : 'Semanal'} · consumo de ${monthName(state.cur)} · recebimento em ${monthName((state.months.get(state.cur) || {}).recebimento || addMonths(state.cur, 1))}`], [], cab];
+    const sub = (nome, rs) => ['Subtotal ' + nome, '', '', r2(rs.reduce((s, l) => s + (Number(l.valor) || 0), 0)), '', '', '', '', r2(rs.reduce((s, l) => s + recebido(l), 0)), '', '', ''];
+    if (bloco === 'mensal') {
+      SECOES.forEach(([k, nome]) => {
+        let rs = all.filter(l => secaoDe(l) === k);
+        if (!rs.length) return;
+        if (k === 'parceiras') rs = rs.map((l, i) => [l, i]).sort((a, b) => posParceira(a[0]) - posParceira(b[0]) || a[1] - b[1]).map(x => x[0]);
+        aoa.push([nome.toUpperCase()]);
+        rs.forEach(l => aoa.push(linha(l)));
+        aoa.push(sub(nome, rs), []);
+      });
+    } else all.forEach(l => aoa.push(linha(l)));
+    aoa.push(['Total', '', '', r2(all.reduce((s, l) => s + (Number(l.valor) || 0), 0)), '', '', '', '', r2(all.reduce((s, l) => s + recebido(l), 0)), '', '', '']);
+    const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true });
+    const ref = X.utils.decode_range(ws['!ref']);
+    for (let R = 3; R <= ref.e.r; R++) {
+      [3, 8, 10, 11].forEach(c => { const v = ws[X.utils.encode_cell({ r: R, c })]; if (v && v.t === 'n') v.z = '"R$" #,##0.00'; });
+      [5, 7].forEach(c => { const v = ws[X.utils.encode_cell({ r: R, c })]; if (v && v.t === 'd') v.z = 'dd/mm/yyyy'; });
+    }
+    ws['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 13 }, { wch: 13 }, { wch: 10 }, { wch: 12 }, { wch: 32 }, { wch: 14 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 12 }];
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, bloco === 'mensal' ? 'Mensal' : 'Semanal');
+    const data = X.write(wb, { bookType: 'xlsx', type: 'array' });
+    const nome = `B2B ${bloco === 'mensal' ? 'Mensal' : 'Semanal'} ${monthName((state.months.get(state.cur) || {}).recebimento || addMonths(state.cur, 1))}.xlsx`;
+    if (btn) btn.disabled = true;
+    try { await state.downloads.save({ filename: nome, data }); toast('Planilha exportada'); }
+    catch (e) { if (e?.code === 'rate_limited') toast('Já há uma confirmação aberta. Responda a ela primeiro.'); else if (e?.code !== 'declined') toast('Não foi possível exportar aqui.'); }
+    finally { if (btn) btn.disabled = false; }
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-xlsx]'); if (b) exportarBloco(b.dataset.xlsx, b); });
+
   // Novo mês
   $('#newMonthBtn').addEventListener('click', () => {
     const list = monthList();
@@ -1499,7 +1544,7 @@
     const db = window.claude?.use ? await window.claude.use('db') : null;
     if (!db) { showStatus('<b>Os dados do painel não carregaram nesta visualização.</b><br>Abra o link no claude.ai com sua conta conectada para ver e baixar os recebimentos.'); return; }
     state.db = db;
-    window.claude.use('downloads').then(d => { if (d) { state.downloads = d; $('#dExport').hidden = false; } });
+    window.claude.use('downloads').then(d => { if (d) { state.downloads = d; $('#dExport').hidden = false; render(); } });
     const user = await window.claude.use('user');
     if (user) { try { const c = await user.can('data.write'); if (c === false) state.canWrite = false; } catch {} }
     const fail = () => showStatus('<b>A conexão com os dados caiu.</b><br>Recarregue a página para continuar.');
