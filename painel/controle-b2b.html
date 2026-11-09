@@ -747,6 +747,7 @@
       <div class="shead">
         <div class="esq"><h2>${title}</h2><small>${money(total)} · ${all.length} ${all.length === 1 ? 'linha' : 'linhas'}</small></div>
         <div class="filtros">
+          <button type="button" class="neutro" data-add="${bloco}" data-write>+ Lançamento</button>
           ${state.downloads ? `<button type="button" class="neutro" data-xlsx="${bloco}">Exportar Excel</button>` : ''}
           ${chips.map(([k, l, n]) => `<button type="button" class="aba${f === k ? ' ativa' : ''}" data-bloco="${bloco}" data-filter="${k}" aria-pressed="${f === k}">${l}<small>${n}</small></button>`).join('')}
           <input class="busca" id="q-${bloco}" type="search" placeholder="Buscar empresa, CNPJ, loja" value="${esc(state.q[bloco])}" aria-label="Buscar no bloco ${esc(title)}">
@@ -1335,6 +1336,8 @@
     if (cl) { const b = cl.dataset.clearcols; state.sort[b] = null; state.colf[b] = {}; saveCols(); render(); return; }
     const chip = e.target.closest('[data-filter]');
     if (chip) { state.filter[chip.dataset.bloco] = chip.dataset.filter; try { localStorage.setItem('b2b.filters', JSON.stringify(state.filter)); } catch {} render(); return; }
+    const add = e.target.closest('[data-add]');
+    if (add) { if (state.cur) openEdit(null, add.dataset.add); return; }
     const act = e.target.closest('[data-act]');
     if (act) { const l = state.lancs.get(act.dataset.id); if (!l) return; act.dataset.act === 'pay' ? openPay(l) : openEdit(l); return; }
     const close = e.target.closest('[data-close]');
@@ -1390,10 +1393,10 @@
 
   // Lançamento
   let editId = null, delArmed = false;
-  function openEdit(l) {
+  function openEdit(l, blocoNovo) {
     editId = l ? l.id : null; delArmed = false;
-    $('#editTitle').textContent = l ? 'Editar lançamento' : `Novo lançamento · ${monthName(state.cur)}`;
-    $('#fBloco').value = l?.bloco || 'mensal';
+    $('#editTitle').textContent = l ? 'Editar lançamento' : `Novo lançamento ${blocoNovo === 'semanal' ? 'no Semanal' : blocoNovo === 'mensal' ? 'no Mensal' : ''} · ${monthName(state.cur)}`.replace('  ', ' ');
+    $('#fBloco').value = l?.bloco || blocoNovo || 'mensal';
     $('#fTag').value = l?.tag || '';
     $('#fGrupo').value = l?.grupo || '';
     $('#fSecao').value = l?.secao || '';
