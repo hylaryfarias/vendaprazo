@@ -791,7 +791,7 @@
   // Cada período é identificado pelo mês em que termina: '2026-11' = 16/10 a 15/11.
   const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
   const cicloDe = dia => +dia.slice(8, 10) >= 16 ? addMonths(dia.slice(0, 7), 1) : dia.slice(0, 7);
-  const DIARIO_DESDE = '2026-11-01'; // o acompanhamento começou em novembro; dias antes disso não aparecem
+  const DIARIO_DESDE = '2026-10-16'; // o acompanhamento começa no ciclo de novembro (16/10 a 15/11); dias antes disso não aparecem
   const cicloIni = c => { const i = addMonths(c, -1) + '-16'; return i < DIARIO_DESDE ? DIARIO_DESDE : i; }, cicloFim = c => c + '-15';
   const cicloNome = c => `${fmtDate(cicloIni(c)).slice(0, 5)} a ${fmtDate(cicloFim(c)).slice(0, 5)}`;
   const diaRows = () => [...state.diario.values()].filter(d => d.dia && d.dia >= DIARIO_DESDE && cicloDe(d.dia) === state.dMes);
