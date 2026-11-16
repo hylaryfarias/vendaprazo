@@ -1054,7 +1054,7 @@
     const emps = [...new Set(rows.map(c => c.empresa || 'SEM EMPRESA'))].sort((a, b) => (a === 'LOJAS' ? 0 : 1) - (b === 'LOJAS' ? 0 : 1) || natural(a, b));
     const ehEmpresa = l => rows.some(c => c.loja === l && c.empresa && c.empresa !== 'LOJAS');
     // "BIGGS 06 - HIGIENOPOLIS" → "BG 06"; usado para mostrar quando o colaborador consumiu em outra filial.
-    const filialCod = f => String(f || '').toUpperCase().split(' - ')[0].replace(/^BIGGS\s*/, 'BG ').replace(/^ISAIAS\s*/, 'IS ').trim();
+    const filialCod = f => String(f || '').toUpperCase().split(' - ')[0].replace(/^BIGG'?S\s*/, 'BG ').replace(/^ISAIAS\s*/, 'IS ').trim();
 
     // Totais: geral, colaboradores, lojas e um card por empresa, comparando com a linha "CONSUMO COLABORADORES <EMPRESA>" do Mensal.
     const b2bLinha = e => [...state.lancs.values()].find(l => l.mes === state.cur && new RegExp('COLABORADORES\\s+' + e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i').test(String(l.empresa || '').trim()));
@@ -1180,7 +1180,7 @@
     linhas.forEach((c, i) => {
       const get = k => map[k] >= 0 ? (c[map[k]] || '') : '';
       const r = { colaborador: get('colaborador').toUpperCase(), loja: get('loja').toUpperCase(), filial: get('filial').toUpperCase(), cpf: get('cpf'), cod: get('cod'), valor: parseMoney(get('valor')), empresa: get('empresa').toUpperCase(), data: toIso(get('data')) };
-      if (!r.loja && r.filial) r.loja = String(r.filial).split(' - ')[0].replace(/^BIGGS\s*/, 'BG ').replace(/^ISAIAS\s*/, 'IS ').trim();
+      if (!r.loja && r.filial) r.loja = String(r.filial).split(' - ')[0].replace(/^BIGG'?S\s*/, 'BG ').replace(/^ISAIAS\s*/, 'IS ').trim();
       if (!r.colaborador || !(r.valor >= 0)) erros.push(i + 1); else rows.push(r);
     });
     return { rows, erros };
