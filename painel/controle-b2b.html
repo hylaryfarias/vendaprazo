@@ -202,6 +202,10 @@
   .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
   .dtab tr.dia-vazio b{font-weight:500}
   .ctab select.vsel{font:inherit;font-size:12px;border:1px solid var(--line-2);border-radius:6px;padding:2px 4px;background:var(--surface);color:var(--ink)}
+  .ctab tr.vp-row{cursor:pointer} .ctab tr.vp-row:hover td{background:#FBF9F4} .ctab tr.vp-row.aberta td{background:var(--sunk)}
+  .ctab tr.vp-row td:first-child{padding-left:22px} .ctab tr.vp-row .seta{width:16px} .ctab tr.vp-row .onde{margin-left:16px}
+  .ctab tr.vdia td{font-size:12.5px;color:var(--ink-2);padding-top:6px;padding-bottom:6px;background:#FBF9F4}
+  .ctab tr.vdia td:first-child{padding-left:56px} .ctab tr.vdia .wd{font-size:12px;color:var(--ink-3);margin-left:2px}
   .ctab .vac{color:var(--brand);font-weight:600;white-space:nowrap} .ctab .vok{color:var(--ok);white-space:nowrap} .tot .vac{color:var(--brand);font-weight:600}
   .ctab .onde{display:block;font-size:11.5px;color:var(--ink-3)}
   .aviso{font-size:12.5px;font-weight:600;color:var(--brand);padding-bottom:6px}
@@ -564,7 +568,7 @@
   };
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', vPOpen: new Set(), dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
   try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
   try { const v = localStorage.getItem('b2b.view'); if (['colab', 'diario', 'conv'].includes(v)) state.view = v; } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
@@ -1170,7 +1174,7 @@
     const ciclo = addMonths(state.cur, 1), q = state.vBusca.trim().toLowerCase();
     const du = diasUteis(ciclo);
     $('#vPer').innerHTML = `<span class="dper">Período <b>${esc(cicloNome(ciclo))}</b> · ${du} dias úteis · limite ${money(LIMITE_DIA * du)} por pessoa (${money(LIMITE_DIA)}/dia)</span>`;
-    const rows = [...state.conv.values()].filter(c => c.ciclo === ciclo);
+    const rows = [...state.conv.values()].filter(c => c.ciclo === ciclo && ((Number(c.valor) || 0) || (Number(c.qtd) || 0)));
     const grupo = c => CONVENIOS.includes(c.convenio) ? c.convenio : '';
     const limite = c => grupo(c) === 'MARLAY' ? null : limiteDia(c) * du;
     const saldo = c => { const l = limite(c); return l == null ? null : l - (Number(c.valor) || 0); };
@@ -1205,14 +1209,24 @@
       html += `<tr class="loja-row${open ? ' aberta' : ''}" data-vg="${esc(g)}" tabindex="0" aria-expanded="${open}"><td><span class="seta" aria-hidden="true">${xs.length ? (open ? '▾' : '▸') : ''}</span> <b>${esc(g || 'Sem convênio definido')}</b> <span class="note">· ${nP(xs.length)}</span></td><td class="r">${xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0) || '—'}</td><td></td><td class="r money">${xs.length ? money(v) : '<span class="note">—</span>'}</td><td class="r">${g === 'MARLAY' ? '<span class="note">sem limite</span>' : ''}</td><td class="r">${a.length ? `<span class="vac">${a.length} acima · ${money(excesso(xs))}</span>` : ''}</td></tr>`;
       if (open) xs.forEach(c => {
         const sel = `<select class="vsel" data-vconv="${esc(c.id)}" aria-label="Convênio de ${esc(c.nome)}"${ro}>${['', ...CONVENIOS].map(o => `<option value="${o}"${o === grupo(c) ? ' selected' : ''}>${o || 'definir…'}</option>`).join('')}</select>`;
-        const l = limite(c);
-        html += `<tr class="pessoa"><td>${esc(c.nome)} ${sel}${c.filial ? `<span class="onde">${esc(c.filial)}</span>` : ''}</td><td class="r">${Number(c.qtd) || '—'}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${l == null ? '<span class="note">sem limite</span>' : `${money(l)}<span class="onde">${money(limiteDia(c))}/dia</span>`}</td><td class="r">${celSaldo(c)}</td></tr>`;
+        const l = limite(c), ds = Object.keys(c.dias || {}).sort(), po = ds.length && state.vPOpen.has(c.id);
+        html += `<tr class="pessoa${ds.length ? ' vp-row' : ''}${po ? ' aberta' : ''}"${ds.length ? ` data-vp="${esc(c.id)}" tabindex="0" aria-expanded="${!!po}" title="Clique para ver dia a dia"` : ''}><td><span class="seta" aria-hidden="true">${ds.length ? (po ? '▾' : '▸') : ''}</span>${esc(c.nome)} ${sel}${c.filial ? `<span class="onde">${esc(c.filial)}</span>` : ''}</td><td class="r">${Number(c.qtd) || '—'}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${l == null ? '<span class="note">sem limite</span>' : `${money(l)}<span class="onde">${money(limiteDia(c))}/dia</span>`}</td><td class="r">${celSaldo(c)}</td></tr>`;
+        if (po) {
+          let ac = 0;
+          ds.forEach(d => {
+            const x = c.dias[d]; ac += Number(x.v) || 0;
+            const lojas = Object.keys(x.l || {}).sort((a, b) => x.l[b] - x.l[a]).join(', ');
+            html += `<tr class="vdia"><td><b>${fmtDate(d).slice(0, 5)}</b> <span class="wd">${SEMANA[new Date(d + 'T12:00:00').getDay()]}</span>${lojas ? `<span class="onde">${esc(lojas)}</span>` : ''}</td><td class="r">${Number(x.q) || '—'}</td><td></td><td class="r money">${money(x.v)}</td><td class="r"><span class="note">acum. ${money(ac)}</span></td><td></td></tr>`;
+          });
+        }
       });
     });
     html += `</tbody>${rows.length ? `<tfoot><tr><td>${q ? `Total filtrado · "${esc(state.vBusca.trim())}"` : 'Total'}</td><td class="r">${achados.reduce((s, c) => s + (Number(c.qtd) || 0), 0)}</td><td class="r">${nP(achados.length)}</td><td class="r money">${money(soma(achados))}</td><td class="r">${q ? `de ${money(tot)}` : ''}</td><td class="r">${acima(achados).length ? `${acima(achados).length} acima · ${money(excesso(achados))}` : ''}</td></tr></tfoot>` : ''}`;
     $('#vTab').innerHTML = html;
   }
   document.addEventListener('click', e => {
+    const vp = e.target.closest('[data-vp]');
+    if (vp && !e.target.closest('select')) { const k = vp.dataset.vp; state.vPOpen.has(k) ? state.vPOpen.delete(k) : state.vPOpen.add(k); renderConv(); return; }
     const g = e.target.closest('[data-vg]');
     if (g) { const k = g.dataset.vg; state.vOpen.has(k) ? state.vOpen.delete(k) : state.vOpen.add(k); renderConv(); return; }
     if (e.target.closest('#vExpand')) {
@@ -1233,7 +1247,7 @@
   $('#vExport').addEventListener('click', async () => {
     const btn = $('#vExport'), ciclo = addMonths(state.cur, 1), du = diasUteis(ciclo);
     const grupo = c => CONVENIOS.includes(c.convenio) ? c.convenio : '';
-    const rows = [...state.conv.values()].filter(c => c.ciclo === ciclo);
+    const rows = [...state.conv.values()].filter(c => c.ciclo === ciclo && ((Number(c.valor) || 0) || (Number(c.qtd) || 0)));
     if (!rows.length) { toast('Nada para exportar neste período'); return; }
     if (!window.XLSX) { toast('O gerador de planilha não carregou. Recarregue a página e tente de novo.'); return; }
     const X = window.XLSX, wb = X.utils.book_new(), r2 = v => Math.round((Number(v) || 0) * 100) / 100;
@@ -1272,6 +1286,18 @@
     grupos.forEach(g => aba(g || 'Sem convênio', rows.filter(c => grupo(c) === g).sort(porNome)));
     const fora = acima(rows).sort(porNome);
     if (fora.length) aba('Acima do limite', fora, true);
+    // Dia a dia: uma linha por pessoa e dia, para quem tem abertura diária.
+    const comDias = rows.filter(c => c.dias && Object.keys(c.dias).length);
+    if (comDias.length) {
+      const aoa = [['Convênio', 'Nome', 'Dia', 'Compras', 'Lojas', 'Valor do dia', 'Acumulado da pessoa']];
+      grupos.forEach(g => comDias.filter(c => grupo(c) === g).sort(porNome).forEach(c => {
+        let ac = 0;
+        Object.keys(c.dias).sort().forEach(d => { const x = c.dias[d]; ac += Number(x.v) || 0; aoa.push([g || 'Sem convênio', c.nome, dt(d), Number(x.q) || 0, Object.keys(x.l || {}).join(', '), r2(x.v), r2(ac)]); });
+      }));
+      const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true }); fmt(ws, [2], [5, 6]);
+      ws['!cols'] = [{ wch: 14 }, { wch: 40 }, { wch: 11 }, { wch: 9 }, { wch: 46 }, { wch: 13 }, { wch: 18 }];
+      X.utils.book_append_sheet(wb, ws, 'Dia a dia');
+    }
     const data = X.write(wb, { bookType: 'xlsx', type: 'array' });
     const nome = `Convênios ${cicloNome(ciclo).replace(/\//g, '-')}.xlsx`;
     btn.disabled = true;
@@ -1306,7 +1332,7 @@
         if (typeof v === 'number') { const d = XLSX.SSF.parse_date_code(v); return d ? `${d.y}-${pad(d.m)}-${pad(d.d)}` : ''; }
         const m = limpa(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${pad(m[2])}-${pad(m[1])}` : '';
       };
-      const P = {};
+      const P = {}, diasArq = new Set();
       linhas.slice(hi + 1).forEach(r => {
         const nome = limpa(r[C.nome]); if (!nome) return;
         const cpf = limpa(r[C.cpf]), k = cpf.replace(/\D/g, '') || nome.toUpperCase().replace(/[^0-9A-Z]/g, '');
@@ -1314,6 +1340,7 @@
         const fil = limpa(r[C.fil]).replace(/BIGG'S/i, 'BIGGS'), v = num(r[C.val]);
         if (fil) p.fil[fil] = (p.fil[fil] || 0) + v;
         p.valor += v; p.qtd += num(r[C.qtd]); const d = isoDe(r[C.dia]); if (d > p.ultima) p.ultima = d;
+        if (d) diasArq.add(d);
       });
       const pessoas = Object.entries(P);
       if (!pessoas.length) throw new Error('O arquivo não tem nenhuma pessoa.');
@@ -1326,7 +1353,42 @@
       const ant = {}; [...state.conv.values()].sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo))).forEach(c => { if (c.convenio && so(c.cpf)) ant[so(c.cpf)] = c.convenio; });
       const emp = {}; [...state.colab.values()].sort((a, b) => String(a.mes).localeCompare(String(b.mes))).forEach(c => { if (CONVENIOS.includes(c.empresa) && so(c.cpf)) emp[so(c.cpf)] = c.empresa; });
       const agora = new Date().toISOString(), tag = ciclo.replace('-', '');
+      const r2 = v => Math.round(v * 100) / 100;
+      const doCiclo = [...state.conv.values()].filter(c => c.ciclo === ciclo);
       let feitos = 0, tot = 0;
+      if (diasArq.size === 1) {
+        // Relatório de um dia só: grava o dia dentro de cada pessoa (substitui o mesmo dia se subir de novo)
+        // e o total da pessoa passa a ser a soma dos dias lançados.
+        const D = ate;
+        const somaDias = dias => {
+          const ks = Object.keys(dias).sort(), lojas = {};
+          ks.forEach(k => Object.entries(dias[k].l || {}).forEach(([l, v]) => { lojas[l] = (lojas[l] || 0) + v; }));
+          return { valor: r2(ks.reduce((s, k) => s + (Number(dias[k].v) || 0), 0)), qtd: ks.reduce((s, k) => s + (Number(dias[k].q) || 0), 0), ultima: ks[ks.length - 1] || '', atualizadoAte: ks[ks.length - 1] || '', filial: Object.keys(lojas).sort((a, b) => lojas[b] - lojas[a]).join(', ') };
+        };
+        const ids = new Set();
+        for (const [k, p] of pessoas) {
+          const id = `cv${tag}-${k}`, atual = state.conv.get(id); ids.add(id);
+          const convenio = atual ? (atual.convenio || '') : (ant[so(p.cpf)] || emp[so(p.cpf)] || '');
+          const dias = { ...((atual && atual.dias) || {}) };
+          const l = {}; Object.entries(p.fil).forEach(([n, v]) => { l[n] = r2(v); });
+          dias[D] = { v: r2(p.valor), q: p.qtd, l };
+          await state.db.doc('convenio/' + id).set({ ciclo, convenio, nome: p.nome, cpf: p.cpf, cod: p.cod, dias, ...somaDias(dias), fonte: f.name, atualizadoEm: agora });
+          tot += p.valor; ok.textContent = `Importando ${++feitos}/${pessoas.length}…`;
+        }
+        // Quem tinha esse dia e não está no arquivo novo perde o dia; quem só tinha o acumulado antigo (sem dias) recomeça do zero.
+        for (const c of doCiclo.filter(c => !ids.has(c.id) && (!c.dias || c.dias[D]))) {
+          const dias = { ...(c.dias || {}) }; delete dias[D];
+          const { id, ...resto } = c;
+          await state.db.doc('convenio/' + id).set({ ...resto, dias, ...somaDias(dias), atualizadoEm: agora });
+        }
+        const mesCard = addMonths(ciclo, -1);
+        if (state.months.has(mesCard) && state.cur !== mesCard) { state.cur = mesCard; render(); }
+        ok.textContent = `${fmtDate(D).slice(0, 5)} ${SEMANA[new Date(D + 'T12:00:00').getDay()]} · ${pessoas.length} pessoas · ${money(tot)}`;
+        toast(`Dia ${fmtDate(D).slice(0, 5)} importado`);
+        return;
+      }
+      if (doCiclo.some(c => c.dias && Object.keys(c.dias).length))
+        throw new Error(`Este arquivo tem vários dias (${fmtDate(datas[0]).slice(0, 5)} a ${fmtDate(ate).slice(0, 5)}). Como o período já tem abertura por dia, suba um relatório por dia.`);
       for (const [k, p] of pessoas) {
         const id = `cv${tag}-${k}`, atual = state.conv.get(id);
         const convenio = atual ? (atual.convenio || '') : (ant[so(p.cpf)] || emp[so(p.cpf)] || '');
@@ -1461,7 +1523,7 @@
       catch { toast('Não foi possível atualizar o Mensal'); }
     }
   });
-  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.loja-row, .dia-row, .dloja')) { e.preventDefault(); e.target.click(); } });
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.loja-row, .dia-row, .dloja, .vp-row')) { e.preventDefault(); e.target.click(); } });
   $('#cBusca').addEventListener('input', e => { state.cBusca = e.target.value; renderColab(); });
   $('#cLancBusca').addEventListener('input', e => { state.cLancQ = e.target.value; renderColab(); });
   $('#cLancToggle').addEventListener('click', () => {
