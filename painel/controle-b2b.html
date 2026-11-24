@@ -334,6 +334,7 @@
       <div class="abas" id="vPer" role="group" aria-label="Período dos convênios (16 a 15)"></div>
       <div class="filtros">
         <span class="note" id="vImpOk" aria-live="polite"></span>
+        <button class="neutro" id="vExport" type="button" hidden>Exportar</button>
         <button class="pick" id="vImp" type="button" data-write>Importar relatório (.xlsx)</button>
         <input id="vArq" type="file" accept=".xlsx,.xls,.csv" hidden>
       </div>
@@ -1150,11 +1151,11 @@
   // Relatório de vendas por cliente dos convênios (vem acumulado no período, vários dias juntos):
   // um registro por pessoa e período (16 a 15), com o total acumulado; cada relatório novo substitui o anterior.
   const CONVENIOS = ['RAGGA', 'VESPA', 'MEL', 'MARLAY'];
-  // Limite por pessoa no período 16 a 15: valor por dia × dias úteis (segunda a sexta, sem feriado nacional).
+  // Limite por pessoa no período 16 a 15: valor por dia × dias úteis (segunda a sexta, sem feriado nacional nem o municipal de Londrina, 10/12).
   // MARLAY não tem limite. Amanda Galvão, Luiz Otávio e Marcelo têm R$ 100 por dia; o resto, R$ 35.
   const LIMITE_DIA = 35, LIMITE_ESPECIAL = 100;
   const ESPECIAIS = [/^AMANDA GALV[AÃ]O\b/, /^LUIZ OT[AÁ]VIO\b/, /^MARCELO\b/];
-  const FERIADOS = new Set(['2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25', '2027-01-01', '2027-04-02', '2027-04-21', '2027-05-01', '2027-09-07', '2027-10-12', '2027-11-02', '2027-11-15', '2027-11-20', '2027-12-25', '2028-01-01']);
+  const FERIADOS = new Set(['2026-11-02', '2026-11-15', '2026-11-20', '2026-12-10', '2026-12-25', '2027-01-01', '2027-04-02', '2027-04-21', '2027-05-01', '2027-09-07', '2027-10-12', '2027-11-02', '2027-11-15', '2027-11-20', '2027-12-10', '2027-12-25', '2028-01-01']);
   const diasUteis = ciclo => {
     let n = 0;
     for (let d = new Date(addMonths(ciclo, -1) + '-16T12:00:00'); ; d.setDate(d.getDate() + 1)) {
@@ -1227,6 +1228,57 @@
     catch { toast('Não foi possível mudar o convênio'); renderConv(); }
   });
   $('#vBusca').addEventListener('input', e => { state.vBusca = e.target.value; renderConv(); });
+
+  // Exportar: planilha com o resumo por convênio e uma aba por convênio (pessoa, compras, total, limite e saldo).
+  $('#vExport').addEventListener('click', async () => {
+    const btn = $('#vExport'), ciclo = addMonths(state.cur, 1), du = diasUteis(ciclo);
+    const grupo = c => CONVENIOS.includes(c.convenio) ? c.convenio : '';
+    const rows = [...state.conv.values()].filter(c => c.ciclo === ciclo);
+    if (!rows.length) { toast('Nada para exportar neste período'); return; }
+    if (!window.XLSX) { toast('O gerador de planilha não carregou. Recarregue a página e tente de novo.'); return; }
+    const X = window.XLSX, wb = X.utils.book_new(), r2 = v => Math.round((Number(v) || 0) * 100) / 100;
+    const lim = c => grupo(c) === 'MARLAY' ? null : limiteDia(c) * du;
+    const sd = c => { const l = lim(c); return l == null ? null : r2(l - (Number(c.valor) || 0)); };
+    const soma = xs => r2(xs.reduce((s, c) => s + (Number(c.valor) || 0), 0));
+    const acima = xs => xs.filter(c => (sd(c) ?? 0) < 0);
+    const exc = xs => r2(acima(xs).reduce((s, c) => s - sd(c), 0));
+    const dt = d => d ? new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) : '';
+    const fmt = (ws, colsData, colsValor) => {
+      const ref = X.utils.decode_range(ws['!ref']);
+      for (let R = 1; R <= ref.e.r; R++) {
+        colsData.forEach(c => { const a = ws[X.utils.encode_cell({ r: R, c })]; if (a && a.t === 'd') a.z = 'dd/mm/yyyy'; });
+        colsValor.forEach(c => { const v = ws[X.utils.encode_cell({ r: R, c })]; if (v && v.t === 'n') v.z = '"R$" #,##0.00'; });
+      }
+    };
+    const ult = rows.map(c => c.atualizadoAte || '').sort().pop();
+    const grupos = [...CONVENIOS, ''].filter(g => rows.some(c => grupo(c) === g));
+    const resumo = [[`Convênios · ${cicloNome(ciclo)}${ult ? ` · consumo até ${fmtDate(ult)}` : ''}`], [`${du} dias úteis · limite ${money(LIMITE_DIA)}/dia (${money(LIMITE_DIA * du)}) · exceções ${money(LIMITE_ESPECIAL)}/dia (${money(LIMITE_ESPECIAL * du)}) · MARLAY sem limite`], [],
+      ['Convênio', 'Pessoas', 'Compras', 'Total', 'Pessoas acima do limite', 'Valor acima do limite']]
+      .concat(grupos.map(g => { const xs = rows.filter(c => grupo(c) === g); return [g || 'Sem convênio definido', xs.length, xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0), soma(xs), g === 'MARLAY' ? 'sem limite' : acima(xs).length, g === 'MARLAY' ? '' : exc(xs)]; }));
+    resumo.push([], ['Total', rows.length, rows.reduce((s, c) => s + (Number(c.qtd) || 0), 0), soma(rows), acima(rows).length, exc(rows)]);
+    const wr = X.utils.aoa_to_sheet(resumo); fmt(wr, [], [3, 5]); wr['!cols'] = [{ wch: 22 }, { wch: 9 }, { wch: 9 }, { wch: 14 }, { wch: 22 }, { wch: 20 }];
+    X.utils.book_append_sheet(wb, wr, 'Resumo');
+    const cab = ['Nome', 'CPF', 'Compras', 'Última compra', 'Lojas', 'Total acumulado', 'Limite do mês', 'Saldo', 'Situação'];
+    const linha = c => { const l = lim(c), s = sd(c); return [c.nome, c.cpf || '', Number(c.qtd) || 0, dt(c.ultima), c.filial || '', r2(c.valor), l == null ? 'sem limite' : l, s == null ? '' : s, s == null ? 'sem limite' : s < 0 ? 'acima do limite' : 'dentro do limite']; };
+    const porNome = (a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' });
+    const aba = (nome, xs, comConv) => {
+      const aoa = [comConv ? ['Convênio', ...cab] : cab].concat(xs.map(c => comConv ? [grupo(c) || 'Sem convênio', ...linha(c)] : linha(c)));
+      aoa.push([], comConv ? ['Total', '', '', '', '', '', soma(xs)] : ['Total', '', xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0), '', '', soma(xs)]);
+      const ws = X.utils.aoa_to_sheet(aoa, { cellDates: true }), o = comConv ? 1 : 0;
+      fmt(ws, [3 + o], [5 + o, 6 + o, 7 + o]);
+      ws['!cols'] = [...(comConv ? [{ wch: 14 }] : []), { wch: 40 }, { wch: 15 }, { wch: 9 }, { wch: 13 }, { wch: 46 }, { wch: 15 }, { wch: 14 }, { wch: 13 }, { wch: 16 }];
+      X.utils.book_append_sheet(wb, ws, nome.slice(0, 31));
+    };
+    grupos.forEach(g => aba(g || 'Sem convênio', rows.filter(c => grupo(c) === g).sort(porNome)));
+    const fora = acima(rows).sort(porNome);
+    if (fora.length) aba('Acima do limite', fora, true);
+    const data = X.write(wb, { bookType: 'xlsx', type: 'array' });
+    const nome = `Convênios ${cicloNome(ciclo).replace(/\//g, '-')}.xlsx`;
+    btn.disabled = true;
+    try { await state.downloads.save({ filename: nome, data }); toast('Planilha exportada'); }
+    catch (e) { if (e?.code === 'rate_limited') toast('Já há uma confirmação aberta. Responda a ela primeiro.'); else if (e?.code !== 'declined') toast('Não foi possível exportar aqui.'); }
+    finally { btn.disabled = false; }
+  });
 
   // Importar o "Relatório de vendas por cliente Sintético" dos convênios direto do arquivo.
   // Pode vir com vários dias: soma tudo por pessoa (CPF) e grava o acumulado do período 16 a 15.
@@ -1727,7 +1779,7 @@
     const db = window.claude?.use ? await window.claude.use('db') : null;
     if (!db) { showStatus('<b>Os dados do painel não carregaram nesta visualização.</b><br>Abra o link no claude.ai com sua conta conectada para ver e baixar os recebimentos.'); return; }
     state.db = db;
-    window.claude.use('downloads').then(d => { if (d) { state.downloads = d; $('#dExport').hidden = false; render(); } });
+    window.claude.use('downloads').then(d => { if (d) { state.downloads = d; $('#dExport').hidden = false; $('#vExport').hidden = false; render(); } });
     const user = await window.claude.use('user');
     if (user) { try { const c = await user.can('data.write'); if (c === false) state.canWrite = false; } catch {} }
     const fail = () => showStatus('<b>A conexão com os dados caiu.</b><br>Recarregue a página para continuar.');
