@@ -201,6 +201,7 @@
   .dtab .wd{font-size:12px;color:var(--ink-3);margin-left:2px}
   .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
   .dtab tr.dia-vazio b{font-weight:500}
+  .ctab select.vsel{font:inherit;font-size:12px;border:1px solid var(--line-2);border-radius:6px;padding:2px 4px;background:var(--surface);color:var(--ink)}
   .ctab .onde{display:block;font-size:11.5px;color:var(--ink-3)}
   .aviso{font-size:12.5px;font-weight:600;color:var(--brand);padding-bottom:6px}
   .previa{background:var(--sunk);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--ink-2)}
@@ -261,6 +262,7 @@
     <button type="button" class="aba" role="tab" data-view="b2b">Recebimentos B2B</button>
     <button type="button" class="aba" role="tab" data-view="colab">Consumo colaboradores</button>
     <button type="button" class="aba" role="tab" data-view="diario">Acompanhamento diário</button>
+    <button type="button" class="aba" role="tab" data-view="conv">Convênios</button>
   </div>
 
   <div id="status" class="banner">Carregando os lançamentos…</div>
@@ -324,6 +326,22 @@
         </div>
       </div>
       <div class="tbox"><div class="tablewrap"><table class="ctab dtab" id="dTab"></table></div></div>
+    </section>
+  </div>
+  <div id="conv" hidden>
+    <div class="dhead">
+      <div class="abas" id="vPer" role="group" aria-label="Período dos convênios (16 a 15)"></div>
+    </div>
+    <div class="totais" id="vCards"></div>
+    <section id="v-pessoas">
+      <div class="shead">
+        <div class="esq"><h2>Por convênio · acumulado por pessoa</h2><small id="vSub"></small></div>
+        <div class="filtros">
+          <button type="button" class="aba" id="vExpand">abrir todos</button>
+          <input class="busca" id="vBusca" type="search" placeholder="Buscar pessoa" aria-label="Buscar pessoa nos convênios">
+        </div>
+      </div>
+      <div class="tbox"><div class="tablewrap"><table class="ctab" id="vTab"></table></div></div>
     </section>
   </div>
   </div>
@@ -539,9 +557,9 @@
   };
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
   try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
-  try { const v = localStorage.getItem('b2b.view'); if (v === 'colab' || v === 'diario') state.view = v; } catch {}
+  try { const v = localStorage.getItem('b2b.view'); if (['colab', 'diario', 'conv'].includes(v)) state.view = v; } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
   try { const t = JSON.parse(localStorage.getItem('b2b.cols') || 'null'); if (t) { Object.assign(state.sort, t.sort); Object.assign(state.colf, t.colf); } } catch {}
   const saveCols = () => { try { localStorage.setItem('b2b.cols', JSON.stringify({ sort: state.sort, colf: state.colf })); } catch {} };
@@ -605,11 +623,12 @@
     if (!state.cur || !list.includes(state.cur)) state.cur = list[list.length - 1];
     renderMonthNav(list);
     $('#status').hidden = true;
-    const colab = state.view === 'colab', diario = state.view === 'diario';
-    $('#main').hidden = colab || diario; $('#colab').hidden = !colab; $('#diario').hidden = !diario; $('#addBtn').hidden = colab || diario;
+    const colab = state.view === 'colab', diario = state.view === 'diario', conv = state.view === 'conv';
+    $('#main').hidden = colab || diario || conv; $('#colab').hidden = !colab; $('#diario').hidden = !diario; $('#conv').hidden = !conv; $('#addBtn').hidden = colab || diario || conv;
     document.querySelectorAll('#visoes [data-view]').forEach(b => { const on = b.dataset.view === state.view; b.classList.toggle('ativa', on); b.setAttribute('aria-selected', on); });
     renderColab();
     renderDiario();
+    renderConv();
 
     const rows = [...state.lancs.values()].filter(l => l.mes === state.cur);
     const by = b => rows.filter(l => (l.bloco || 'mensal') === b).sort((a, c) => (a.ordem ?? 0) - (c.ordem ?? 0) || String(a.empresa).localeCompare(String(c.empresa)));
@@ -619,7 +638,7 @@
     renderBook('semanal', 'Semanal · vendas do Luiz', semanal);
     $('#resumoTxt').textContent = resumoWpp(rows);
     document.querySelectorAll('[data-write]').forEach(b => b.hidden = !state.canWrite);
-    if (colab || diario) $('#addBtn').hidden = true;
+    if (colab || diario || conv) $('#addBtn').hidden = true;
   }
 
   function renderMonthNav(list) {
@@ -632,7 +651,7 @@
       const sub = on ? `consumo de ${MESES[+m.slice(5, 7) - 1]}${meta.fechamento ? ' · fecha ' + fmtDate(meta.fechamento).slice(0, 5) : ''}`
                      : `consumo de ${MESES[+m.slice(5, 7) - 1]} · ${ls.length} ${ls.length === 1 ? 'lançamento' : 'lançamentos'}`;
       return `<button type="button" class="mes${on ? ' ativo' : ''}" data-month="${m}" aria-current="${on ? 'true' : 'false'}"><b>${esc(monthName(recOf(m)))}</b><small>${esc(sub)}</small><i aria-hidden="true">${on ? '⌄' : '›'}</i></button>`
-        + (on ? `<div class="sub-mes"><a href="#book-mensal" data-v="b2b">Mensal <span>${money(tot('mensal'))}</span></a><a href="#book-semanal" data-v="b2b">Semanal <span>${money(tot('semanal'))}</span></a><a href="#c-lojas" data-v="colab">Colaboradores <span>${money([...state.colab.values()].filter(c => c.mes === m).reduce((s, c) => s + (Number(c.valor) || 0), 0))}</span></a><a href="#d-dias" data-v="diario">Acompanhamento diário${(t => t ? ` <span>${money(t)}</span>` : '')([...state.diario.values()].filter(d => d.dia && d.dia >= DIARIO_DESDE && cicloDe(d.dia) === addMonths(m, 1)).reduce((s, d) => s + (Number(d.valor) || 0), 0))}</a><a href="#resumo" data-v="b2b">Resumo WhatsApp</a></div>` : '');
+        + (on ? `<div class="sub-mes"><a href="#book-mensal" data-v="b2b">Mensal <span>${money(tot('mensal'))}</span></a><a href="#book-semanal" data-v="b2b">Semanal <span>${money(tot('semanal'))}</span></a><a href="#c-lojas" data-v="colab">Colaboradores <span>${money([...state.colab.values()].filter(c => c.mes === m).reduce((s, c) => s + (Number(c.valor) || 0), 0))}</span></a><a href="#d-dias" data-v="diario">Acompanhamento diário${(t => t ? ` <span>${money(t)}</span>` : '')([...state.diario.values()].filter(d => d.dia && d.dia >= DIARIO_DESDE && cicloDe(d.dia) === addMonths(m, 1)).reduce((s, d) => s + (Number(d.valor) || 0), 0))}</a><a href="#v-pessoas" data-v="conv">Convênios${(t => t ? ` <span>${money(t)}</span>` : '')([...state.conv.values()].filter(c => c.ciclo === addMonths(m, 1)).reduce((s, c) => s + (Number(c.valor) || 0), 0))}</a><a href="#resumo" data-v="b2b">Resumo WhatsApp</a></div>` : '');
     }).join('');
     const bits = [];
     if (state.cur) bits.push(`<span><span class="ponto"></span>Consumo de <b>${esc(monthName(state.cur))}</b> · recebimento em <b>${esc(monthName(recOf(state.cur)))}</b></span>`);
@@ -1121,6 +1140,62 @@
       : `<tr><td colspan="6" class="empty">${lq ? `Nenhum colaborador encontrado para "${esc(state.cLancQ)}".` : 'Nenhum lançamento.'}</td></tr>`}</tbody>`;
   }
 
+  // ---------- convênios ----------
+  // Relatório de vendas por cliente dos convênios (vem acumulado no período, vários dias juntos):
+  // um registro por pessoa e período (16 a 15), com o total acumulado; cada relatório novo substitui o anterior.
+  const CONVENIOS = ['RAGGA', 'VESPA', 'MEL', 'MARLAY'];
+  function renderConv() {
+    const ciclo = addMonths(state.cur, 1), q = state.vBusca.trim().toLowerCase();
+    $('#vPer').innerHTML = `<span class="dper">Período <b>${esc(cicloNome(ciclo))}</b> · recebimento em ${esc(monthName(ciclo))}</span>`;
+    const rows = [...state.conv.values()].filter(c => c.ciclo === ciclo);
+    const grupo = c => CONVENIOS.includes(c.convenio) ? c.convenio : '';
+    const soma = xs => xs.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+    const tot = soma(rows);
+    const ult = rows.map(c => c.atualizadoAte || '').sort().pop();
+    const semConv = rows.filter(c => !grupo(c));
+    $('#vCards').innerHTML = [
+      card('', 'Total convênios', money(tot), `${new Set(rows.map(c => c.cpf || c.nome)).size} pessoas${ult ? ` · até ${fmtDate(ult).slice(0, 5)}` : ''}`),
+      ...CONVENIOS.map(cv => { const xs = rows.filter(c => grupo(c) === cv); return card('', cv, money(soma(xs)), xs.length ? `${xs.length} ${xs.length === 1 ? 'pessoa' : 'pessoas'}` : 'sem consumo no período'); }),
+      ...(semConv.length ? [card('late', 'Sem convênio definido', money(soma(semConv)), `${semConv.length} ${semConv.length === 1 ? 'pessoa' : 'pessoas'} · escolha o convênio na lista`)] : []),
+    ].join('');
+    const casa = c => !q || String(c.nome).toLowerCase().includes(q);
+    const achados = rows.filter(casa);
+    $('#vSub').textContent = q ? `${money(soma(achados))} · ${achados.length} ${achados.length === 1 ? 'pessoa' : 'pessoas'} com "${state.vBusca.trim()}"` : `${money(tot)} · ${cicloNome(ciclo)}`;
+    const grupos = [...CONVENIOS, ''].filter(g => achados.some(c => grupo(c) === g) || (!q && g));
+    $('#vExpand').textContent = grupos.every(g => state.vOpen.has(g)) ? 'fechar todos' : 'abrir todos';
+    const ro = state.canWrite ? '' : ' disabled';
+    let html = `<thead><tr><th>Convênio / pessoa</th><th class="r">Compras</th><th class="r">Última compra</th><th class="r">Total acumulado</th><th class="r">% do convênio</th></tr></thead><tbody>`;
+    if (!rows.length) html += `<tr><td colspan="5" class="empty">Nenhum relatório de convênio lançado neste período.</td></tr>`;
+    else if (!achados.length) html += `<tr><td colspan="5" class="empty">Ninguém encontrado para "${esc(state.vBusca)}".</td></tr>`;
+    else grupos.forEach(g => {
+      const xs = achados.filter(c => grupo(c) === g).sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0) || natural(a.nome, b.nome));
+      const v = soma(xs), open = state.vOpen.has(g) || !!q;
+      html += `<tr class="loja-row${open ? ' aberta' : ''}" data-vg="${esc(g)}" tabindex="0" aria-expanded="${open}"><td><span class="seta" aria-hidden="true">${xs.length ? (open ? '▾' : '▸') : ''}</span> <b>${esc(g || 'Sem convênio definido')}</b> <span class="note">· ${xs.length} ${xs.length === 1 ? 'pessoa' : 'pessoas'}</span></td><td class="r">${xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0) || '—'}</td><td></td><td class="r money">${xs.length ? money(v) : '<span class="note">—</span>'}</td><td class="r">${tot && xs.length ? (v / tot * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '% do total' : ''}</td></tr>`;
+      if (open) xs.forEach(c => {
+        const sel = `<select class="vsel" data-vconv="${esc(c.id)}" aria-label="Convênio de ${esc(c.nome)}"${ro}>${['', ...CONVENIOS].map(o => `<option value="${o}"${o === grupo(c) ? ' selected' : ''}>${o || 'definir…'}</option>`).join('')}</select>`;
+        html += `<tr class="pessoa"><td>${esc(c.nome)} ${sel}${c.filial ? `<span class="onde">${esc(c.filial)}</span>` : ''}</td><td class="r">${Number(c.qtd) || '—'}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${v ? ((Number(c.valor) || 0) / v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : ''}</td></tr>`;
+      });
+    });
+    html += `</tbody>${rows.length ? `<tfoot><tr><td>${q ? `Total filtrado · "${esc(state.vBusca.trim())}"` : 'Total'}</td><td class="r">${achados.reduce((s, c) => s + (Number(c.qtd) || 0), 0)}</td><td class="r">${achados.length} ${achados.length === 1 ? 'pessoa' : 'pessoas'}</td><td class="r money">${money(soma(achados))}</td><td class="r">${q ? `de ${money(tot)}` : '100%'}</td></tr></tfoot>` : ''}`;
+    $('#vTab').innerHTML = html;
+  }
+  document.addEventListener('click', e => {
+    const g = e.target.closest('[data-vg]');
+    if (g) { const k = g.dataset.vg; state.vOpen.has(k) ? state.vOpen.delete(k) : state.vOpen.add(k); renderConv(); return; }
+    if (e.target.closest('#vExpand')) {
+      const all = [...CONVENIOS, ''];
+      if (all.every(k => state.vOpen.has(k))) state.vOpen.clear(); else all.forEach(k => state.vOpen.add(k));
+      renderConv();
+    }
+  });
+  document.addEventListener('change', async e => {
+    const s = e.target.closest('[data-vconv]');
+    if (!s) return;
+    try { await state.db.doc('convenio/' + s.dataset.vconv).update({ convenio: s.value, atualizadoEm: new Date().toISOString() }); toast(s.value ? `Movido para ${s.value}` : 'Convênio removido'); }
+    catch { toast('Não foi possível mudar o convênio'); renderConv(); }
+  });
+  $('#vBusca').addEventListener('input', e => { state.vBusca = e.target.value; renderConv(); });
+
   function setView(v) {
     state.view = v;
     try { localStorage.setItem('b2b.view', v); } catch {}
@@ -1219,7 +1294,7 @@
   document.addEventListener('click', async e => {
     const v = e.target.closest('[data-view]');
     if (v) { setView(v.dataset.view); return; }
-    const lr = e.target.closest('.loja-row');
+    const lr = e.target.closest('.loja-row[data-loja]');
     if (lr) { const l = lr.dataset.loja; state.cOpen.has(l) ? state.cOpen.delete(l) : state.cOpen.add(l); renderColab(); return; }
     if (e.target.closest('#cExpand')) {
       const ls = [...new Set(colabRows().map(c => c.loja || '—'))];
@@ -1562,6 +1637,10 @@
     }, fail);
     db.collection('diario').onSnapshot(snap => {
       state.diario = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+      render();
+    }, fail);
+    db.collection('convenio').onSnapshot(snap => {
+      state.conv = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
       render();
     }, fail);
     db.collection('colab').onSnapshot(snap => {
