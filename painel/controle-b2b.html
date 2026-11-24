@@ -357,7 +357,7 @@
     </section>
     <section id="v-wpp">
       <div class="shead">
-        <div class="esq"><h2>Resumo do dia para WhatsApp</h2><small>escolha o dia · o acumulado e os limites são até o dia escolhido</small></div>
+        <div class="esq"><h2>Resumo do dia para WhatsApp</h2><small>escolha o dia · segunda sai junto com o fim de semana · acumulado e limites até o último dia do texto</small></div>
         <div class="filtros">
           <select class="busca" id="vDia" aria-label="Dia do resumo"></select>
           <button class="pick" id="vCopy" type="button">Copiar texto</button>
@@ -1237,24 +1237,43 @@
     renderConvWpp(ciclo, rows, grupo, limite);
   }
   // Texto do dia: consumo do dia e acumulado até ele por convênio, quem passou do limite e quem está perto (80% ou mais).
+  // Sábado, domingo e segunda saem num texto só (o de segunda), com o consumo de cada dia separado.
   function renderConvWpp(ciclo, rows, grupo, limite) {
     const dias = [...new Set(rows.flatMap(c => Object.keys(c.dias || {})))].sort();
     const wd = d => SEMANA[new Date(d + 'T12:00:00').getDay()];
-    if (!state.vDiaEscolhido || !dias.includes(state.vDia)) state.vDia = dias[dias.length - 1] || '';
-    $('#vDia').innerHTML = dias.length ? dias.slice().reverse().map(d => `<option value="${d}"${d === state.vDia ? ' selected' : ''}>${fmtDate(d).slice(0, 5)} ${wd(d)}</option>`).join('') : '<option value="">sem dias</option>';
-    $('#vDia').disabled = $('#vCopy').disabled = !dias.length;
-    if (!dias.length) { $('#vWpp').textContent = 'Suba os relatórios de um dia só (botão Importar relatórios) para gerar o resumo diário.'; return; }
-    const D = state.vDia;
-    const doDia = c => Number(c.dias?.[D]?.v) || 0;
+    const mais = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
+    const iniCiclo = addMonths(ciclo, -1) + '-16', ultimo = dias[dias.length - 1] || '';
+    // Agrupa os dias com dados em envios: dia útil sozinho; sábado, domingo e segunda juntos.
+    const blocos = new Map();
+    dias.forEach(d => {
+      const w = new Date(d + 'T12:00:00').getDay();
+      if (w !== 6 && w !== 0 && w !== 1) { blocos.set(d, [d]); return; }
+      const seg = mais(d, w === 6 ? 2 : w === 0 ? 1 : 0);
+      const ds = [mais(seg, -2), mais(seg, -1), seg].filter(x => x >= iniCiclo && x <= ultimo && x <= ciclo + '-15');
+      blocos.set(ds[ds.length - 1], ds);
+    });
+    const chaves = [...blocos.keys()].sort();
+    const nomeBloco = k => { const ds = blocos.get(k); return ds.length === 1 ? `${fmtDate(k).slice(0, 5)} ${wd(k)}` : `${ds.map(wd).join(' + ')} · ${fmtDate(ds[0]).slice(0, 5)} a ${fmtDate(k).slice(0, 5)}`; };
+    if (!state.vDiaEscolhido || !blocos.has(state.vDia)) state.vDia = chaves[chaves.length - 1] || '';
+    $('#vDia').innerHTML = chaves.length ? chaves.slice().reverse().map(k => `<option value="${k}"${k === state.vDia ? ' selected' : ''}>${nomeBloco(k)}</option>`).join('') : '<option value="">sem dias</option>';
+    $('#vDia').disabled = $('#vCopy').disabled = !chaves.length;
+    if (!chaves.length) { $('#vWpp').textContent = 'Suba os relatórios de um dia só (botão Importar relatórios) para gerar o resumo diário.'; return; }
+    const D = state.vDia, B = blocos.get(D), varios = B.length > 1;
+    const doDia = (c, d) => Number(c.dias?.[d]?.v) || 0;
+    const doBloco = c => B.reduce((s, d) => s + doDia(c, d), 0);
     const ate = c => Object.entries(c.dias || {}).reduce((s, [d, x]) => s + (d <= D ? Number(x.v) || 0 : 0), 0);
     const soma = (xs, fn) => xs.reduce((s, c) => s + fn(c), 0);
-    const ini = fmtDate(addMonths(ciclo, -1) + '-16').slice(0, 5);
-    const pessoasDia = rows.filter(c => doDia(c));
-    const L = [`*Convênios · ${fmtDate(D).slice(0, 5)} (${wd(D)})*`, `Consumo do dia: *${money(soma(rows, doDia))}* · ${pessoasDia.length} ${pessoasDia.length === 1 ? 'pessoa' : 'pessoas'}`, `Acumulado ${ini} a ${fmtDate(D).slice(0, 5)}: *${money(soma(rows, ate))}*`, ''];
+    const nP = n => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`;
+    const pessoasB = rows.filter(c => doBloco(c));
+    const L = varios
+      ? ['📊 *RESUMO DO FIM DE SEMANA · CONSUMO CONVÊNIOS*', `*${B.map(wd).join(' + ')} · ${fmtDate(B[0]).slice(0, 5)} a ${fmtDate(D).slice(0, 5)}*`, '', `Consumo no período: *${money(soma(rows, doBloco))}* · ${nP(pessoasB.length)}`,
+         ...B.map(d => { const v = soma(rows, c => doDia(c, d)); return `• ${wd(d)} ${fmtDate(d).slice(0, 5)}: ${v ? money(v) : '—'}`; })]
+      : ['📊 *RESUMO DIÁRIO · CONSUMO CONVÊNIOS*', `*${fmtDate(D).slice(0, 5)} (${wd(D)})*`, '', `Consumo do dia: *${money(soma(rows, doBloco))}* · ${nP(pessoasB.length)}`];
+    L.push(`Acumulado ${fmtDate(iniCiclo).slice(0, 5)} a ${fmtDate(D).slice(0, 5)}: *${money(soma(rows, ate))}*`, '');
     [...CONVENIOS, ''].forEach(g => {
-      const xs = rows.filter(c => grupo(c) === g), d = soma(xs, doDia), a = soma(xs, ate);
+      const xs = rows.filter(c => grupo(c) === g), d = soma(xs, doBloco), a = soma(xs, ate);
       if (!g && !a) return;
-      L.push(`*${g || 'Sem convênio'}* · dia ${d ? money(d) : '—'} · acum. ${a ? money(a) : '—'}`);
+      L.push(`*${g || 'Sem convênio'}* · ${varios ? 'no período' : 'dia'} ${d ? money(d) : '—'} · acum. ${a ? money(a) : '—'}`);
     });
     const comLim = rows.filter(c => limite(c) != null && ate(c) > 0).map(c => ({ c, a: ate(c), l: limite(c) }));
     const porNome = (x, y) => String(x.c.nome).localeCompare(String(y.c.nome), 'pt-BR', { sensitivity: 'base' });
