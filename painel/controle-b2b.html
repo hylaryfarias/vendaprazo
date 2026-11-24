@@ -1200,28 +1200,28 @@
     $('#vExpand').textContent = grupos.every(g => state.vOpen.has(g)) ? 'fechar todos' : 'abrir todos';
     const ro = state.canWrite ? '' : ' disabled';
     const celSaldo = c => { const sd = saldo(c); if (sd == null) return '<span class="note">—</span>'; return sd < -0.005 ? `<span class="vac">${money(-sd)} acima</span>` : `<span class="vok">${money(sd)}</span>`; };
-    let html = `<thead><tr><th>Convênio / pessoa</th><th class="r">Compras</th><th class="r">Última compra</th><th class="r">Total acumulado</th><th class="r">Limite do mês</th><th class="r">Saldo</th></tr></thead><tbody>`;
+    let html = `<thead><tr><th>Convênio / pessoa</th><th>Convênio</th><th class="r">Última compra</th><th class="r">Total acumulado</th><th class="r">Limite do mês</th><th class="r">Saldo</th></tr></thead><tbody>`;
     if (!rows.length) html += `<tr><td colspan="6" class="empty">Nenhum relatório de convênio lançado neste período.</td></tr>`;
     else if (!achados.length) html += `<tr><td colspan="6" class="empty">Ninguém encontrado para "${esc(state.vBusca)}".</td></tr>`;
     else grupos.forEach(g => {
       const xs = achados.filter(c => grupo(c) === g).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' }));
       const v = soma(xs), open = state.vOpen.has(g) || !!q, a = acima(xs);
-      html += `<tr class="loja-row${open ? ' aberta' : ''}" data-vg="${esc(g)}" tabindex="0" aria-expanded="${open}"><td><span class="seta" aria-hidden="true">${xs.length ? (open ? '▾' : '▸') : ''}</span> <b>${esc(g || 'Sem convênio definido')}</b> <span class="note">· ${nP(xs.length)}</span></td><td class="r">${xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0) || '—'}</td><td></td><td class="r money">${xs.length ? money(v) : '<span class="note">—</span>'}</td><td class="r">${g === 'MARLAY' ? '<span class="note">sem limite</span>' : ''}</td><td class="r">${a.length ? `<span class="vac">${a.length} acima · ${money(excesso(xs))}</span>` : ''}</td></tr>`;
+      html += `<tr class="loja-row${open ? ' aberta' : ''}" data-vg="${esc(g)}" tabindex="0" aria-expanded="${open}"><td><span class="seta" aria-hidden="true">${xs.length ? (open ? '▾' : '▸') : ''}</span> <b>${esc(g || 'Sem convênio definido')}</b> <span class="note">· ${nP(xs.length)}</span></td><td></td><td></td><td class="r money">${xs.length ? money(v) : '<span class="note">—</span>'}</td><td class="r">${g === 'MARLAY' ? '<span class="note">sem limite</span>' : ''}</td><td class="r">${a.length ? `<span class="vac">${a.length} acima · ${money(excesso(xs))}</span>` : ''}</td></tr>`;
       if (open) xs.forEach(c => {
         const sel = `<select class="vsel" data-vconv="${esc(c.id)}" aria-label="Convênio de ${esc(c.nome)}"${ro}>${['', ...CONVENIOS].map(o => `<option value="${o}"${o === grupo(c) ? ' selected' : ''}>${o || 'definir…'}</option>`).join('')}</select>`;
         const l = limite(c), ds = Object.keys(c.dias || {}).sort(), po = ds.length && state.vPOpen.has(c.id);
-        html += `<tr class="pessoa${ds.length ? ' vp-row' : ''}${po ? ' aberta' : ''}"${ds.length ? ` data-vp="${esc(c.id)}" tabindex="0" aria-expanded="${!!po}" title="Clique para ver dia a dia"` : ''}><td><span class="seta" aria-hidden="true">${ds.length ? (po ? '▾' : '▸') : ''}</span>${esc(c.nome)} ${sel}${c.filial ? `<span class="onde">${esc(c.filial)}</span>` : ''}</td><td class="r">${Number(c.qtd) || '—'}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${l == null ? '<span class="note">sem limite</span>' : `${money(l)}<span class="onde">${money(limiteDia(c))}/dia</span>`}</td><td class="r">${celSaldo(c)}</td></tr>`;
+        html += `<tr class="pessoa${ds.length ? ' vp-row' : ''}${po ? ' aberta' : ''}"${ds.length ? ` data-vp="${esc(c.id)}" tabindex="0" aria-expanded="${!!po}" title="Clique para ver dia a dia"` : ''}><td><span class="seta" aria-hidden="true">${ds.length ? (po ? '▾' : '▸') : ''}</span>${esc(c.nome)}${c.filial ? `<span class="onde">${esc(c.filial)}</span>` : ''}</td><td>${sel}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${l == null ? '<span class="note">sem limite</span>' : `${money(l)}<span class="onde">${money(limiteDia(c))}/dia</span>`}</td><td class="r">${celSaldo(c)}</td></tr>`;
         if (po) {
           let ac = 0;
           ds.forEach(d => {
             const x = c.dias[d]; ac += Number(x.v) || 0;
             const lojas = Object.keys(x.l || {}).sort((a, b) => x.l[b] - x.l[a]).join(', ');
-            html += `<tr class="vdia"><td><b>${fmtDate(d).slice(0, 5)}</b> <span class="wd">${SEMANA[new Date(d + 'T12:00:00').getDay()]}</span>${lojas ? `<span class="onde">${esc(lojas)}</span>` : ''}</td><td class="r">${Number(x.q) || '—'}</td><td></td><td class="r money">${money(x.v)}</td><td class="r"><span class="note">acum. ${money(ac)}</span></td><td></td></tr>`;
+            html += `<tr class="vdia"><td><b>${fmtDate(d).slice(0, 5)}</b> <span class="wd">${SEMANA[new Date(d + 'T12:00:00').getDay()]}</span>${lojas ? `<span class="onde">${esc(lojas)}</span>` : ''}</td><td></td><td></td><td class="r money">${money(x.v)}</td><td class="r"><span class="note">acum. ${money(ac)}</span></td><td></td></tr>`;
           });
         }
       });
     });
-    html += `</tbody>${rows.length ? `<tfoot><tr><td>${q ? `Total filtrado · "${esc(state.vBusca.trim())}"` : 'Total'}</td><td class="r">${achados.reduce((s, c) => s + (Number(c.qtd) || 0), 0)}</td><td class="r">${nP(achados.length)}</td><td class="r money">${money(soma(achados))}</td><td class="r">${q ? `de ${money(tot)}` : ''}</td><td class="r">${acima(achados).length ? `${acima(achados).length} acima · ${money(excesso(achados))}` : ''}</td></tr></tfoot>` : ''}`;
+    html += `</tbody>${rows.length ? `<tfoot><tr><td>${q ? `Total filtrado · "${esc(state.vBusca.trim())}"` : 'Total'}</td><td></td><td class="r">${nP(achados.length)}</td><td class="r money">${money(soma(achados))}</td><td class="r">${q ? `de ${money(tot)}` : ''}</td><td class="r">${acima(achados).length ? `${acima(achados).length} acima · ${money(excesso(achados))}` : ''}</td></tr></tfoot>` : ''}`;
     $('#vTab').innerHTML = html;
   }
   document.addEventListener('click', e => {
