@@ -331,6 +331,11 @@
   <div id="conv" hidden>
     <div class="dhead">
       <div class="abas" id="vPer" role="group" aria-label="Período dos convênios (16 a 15)"></div>
+      <div class="filtros">
+        <span class="note" id="vImpOk" aria-live="polite"></span>
+        <button class="pick" id="vImp" type="button" data-write>Importar relatório (.xlsx)</button>
+        <input id="vArq" type="file" accept=".xlsx,.xls,.csv" hidden>
+      </div>
     </div>
     <div class="totais" id="vCards"></div>
     <section id="v-pessoas">
@@ -1168,7 +1173,7 @@
     if (!rows.length) html += `<tr><td colspan="5" class="empty">Nenhum relatório de convênio lançado neste período.</td></tr>`;
     else if (!achados.length) html += `<tr><td colspan="5" class="empty">Ninguém encontrado para "${esc(state.vBusca)}".</td></tr>`;
     else grupos.forEach(g => {
-      const xs = achados.filter(c => grupo(c) === g).sort((a, b) => (Number(b.valor) || 0) - (Number(a.valor) || 0) || natural(a.nome, b.nome));
+      const xs = achados.filter(c => grupo(c) === g).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' }));
       const v = soma(xs), open = state.vOpen.has(g) || !!q;
       html += `<tr class="loja-row${open ? ' aberta' : ''}" data-vg="${esc(g)}" tabindex="0" aria-expanded="${open}"><td><span class="seta" aria-hidden="true">${xs.length ? (open ? '▾' : '▸') : ''}</span> <b>${esc(g || 'Sem convênio definido')}</b> <span class="note">· ${xs.length} ${xs.length === 1 ? 'pessoa' : 'pessoas'}</span></td><td class="r">${xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0) || '—'}</td><td></td><td class="r money">${xs.length ? money(v) : '<span class="note">—</span>'}</td><td class="r">${tot && xs.length ? (v / tot * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '% do total' : ''}</td></tr>`;
       if (open) xs.forEach(c => {
@@ -1195,6 +1200,74 @@
     catch { toast('Não foi possível mudar o convênio'); renderConv(); }
   });
   $('#vBusca').addEventListener('input', e => { state.vBusca = e.target.value; renderConv(); });
+
+  // Importar o "Relatório de vendas por cliente Sintético" dos convênios direto do arquivo.
+  // Pode vir com vários dias: soma tudo por pessoa (CPF) e grava o acumulado do período 16 a 15.
+  // Cada importação substitui o total de quem está no arquivo; o convênio já escolhido para a pessoa é mantido.
+  $('#vImp').addEventListener('click', () => $('#vArq').click());
+  $('#vArq').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    const ok = $('#vImpOk');
+    if (!window.XLSX) { toast('O leitor de planilha não carregou. Recarregue a página e tente de novo.'); return; }
+    try {
+      ok.textContent = 'Lendo o arquivo…';
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
+      const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
+      const limpa = v => String(v ?? '').replace(/^="?|"$/g, '').trim();
+      const sem = v => limpa(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const hi = linhas.findIndex(r => r.some(c => /cpf/.test(sem(c))) && r.some(c => /total de vendas/.test(sem(c))));
+      if (hi < 0) throw new Error('Não achei as colunas CPF/CNPJ e Total de vendas. Use o Relatório de vendas por cliente Sintético.');
+      const h = linhas[hi].map(sem), col = re => h.findIndex(c => re.test(c));
+      const C = { fil: col(/^filial/), cod: col(/^cod\.?$/), nome: col(/nome/), cpf: col(/cpf/), dia: col(/(ultima|utilma|util?ma) compra/), qtd: col(/qtde/), val: col(/total de vendas/) };
+      if (C.nome < 0 || C.dia < 0) throw new Error('Não achei as colunas Nome do cliente e Última compra.');
+      const num = v => typeof v === 'number' ? v : Number(limpa(v).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0;
+      const isoDe = v => {
+        if (v instanceof Date) return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+        if (typeof v === 'number') { const d = XLSX.SSF.parse_date_code(v); return d ? `${d.y}-${pad(d.m)}-${pad(d.d)}` : ''; }
+        const m = limpa(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${pad(m[2])}-${pad(m[1])}` : '';
+      };
+      const P = {};
+      linhas.slice(hi + 1).forEach(r => {
+        const nome = limpa(r[C.nome]); if (!nome) return;
+        const cpf = limpa(r[C.cpf]), k = cpf.replace(/\D/g, '') || nome.toUpperCase().replace(/[^0-9A-Z]/g, '');
+        const p = (P[k] ||= { nome, cpf, cod: limpa(r[C.cod]), fil: {}, valor: 0, qtd: 0, ultima: '' });
+        const fil = limpa(r[C.fil]).replace(/BIGG'S/i, 'BIGGS'), v = num(r[C.val]);
+        if (fil) p.fil[fil] = (p.fil[fil] || 0) + v;
+        p.valor += v; p.qtd += num(r[C.qtd]); const d = isoDe(r[C.dia]); if (d > p.ultima) p.ultima = d;
+      });
+      const pessoas = Object.entries(P);
+      if (!pessoas.length) throw new Error('O arquivo não tem nenhuma pessoa.');
+      const datas = pessoas.map(([, p]) => p.ultima).filter(Boolean).sort();
+      if (!datas.length) throw new Error('Não consegui ler as datas da coluna Última compra.');
+      const ate = datas[datas.length - 1], ciclo = cicloDe(ate);
+      if (cicloDe(datas[0]) !== ciclo) throw new Error(`O arquivo mistura dois períodos (${fmtDate(datas[0])} a ${fmtDate(ate)}). Exporte só de 16 a 15.`);
+      // Convênio de cada pessoa: o já escolhido neste período, senão o de um período anterior, senão a empresa na lista de colaboradores.
+      const so = c => String(c || '').replace(/\D/g, '');
+      const ant = {}; [...state.conv.values()].sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo))).forEach(c => { if (c.convenio && so(c.cpf)) ant[so(c.cpf)] = c.convenio; });
+      const emp = {}; [...state.colab.values()].sort((a, b) => String(a.mes).localeCompare(String(b.mes))).forEach(c => { if (CONVENIOS.includes(c.empresa) && so(c.cpf)) emp[so(c.cpf)] = c.empresa; });
+      const agora = new Date().toISOString(), tag = ciclo.replace('-', '');
+      let feitos = 0, tot = 0;
+      for (const [k, p] of pessoas) {
+        const id = `cv${tag}-${k}`, atual = state.conv.get(id);
+        const convenio = atual ? (atual.convenio || '') : (ant[so(p.cpf)] || emp[so(p.cpf)] || '');
+        await state.db.doc('convenio/' + id).set({
+          ciclo, convenio, nome: p.nome, cpf: p.cpf, cod: p.cod,
+          filial: Object.keys(p.fil).sort((a, b) => p.fil[b] - p.fil[a]).join(', '),
+          valor: Math.round(p.valor * 100) / 100, qtd: p.qtd, ultima: p.ultima, atualizadoAte: ate,
+          fonte: `${f.name} · até ${fmtDate(ate)}`, atualizadoEm: agora,
+        });
+        tot += p.valor; ok.textContent = `Importando ${++feitos}/${pessoas.length}…`;
+      }
+      const mesCard = addMonths(ciclo, -1);
+      if (state.months.has(mesCard) && state.cur !== mesCard) { state.cur = mesCard; render(); }
+      ok.textContent = `${pessoas.length} pessoas · ${money(tot)} · ${cicloNome(ciclo)} até ${fmtDate(ate).slice(0, 5)}`;
+      toast('Relatório dos convênios importado');
+    } catch (err) {
+      ok.textContent = '';
+      toast(err?.message && !/permission|denied/i.test(err.message) ? err.message : 'Não foi possível importar o relatório');
+    }
+  });
 
   function setView(v) {
     state.view = v;
