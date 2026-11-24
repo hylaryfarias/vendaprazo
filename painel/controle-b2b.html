@@ -202,6 +202,7 @@
   .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
   .dtab tr.dia-vazio b{font-weight:500}
   .ctab select.vsel{font:inherit;font-size:12px;border:1px solid var(--line-2);border-radius:6px;padding:2px 4px;background:var(--surface);color:var(--ink)}
+  .ctab .vac{color:var(--brand);font-weight:600;white-space:nowrap} .ctab .vok{color:var(--ok);white-space:nowrap} .tot .vac{color:var(--brand);font-weight:600}
   .ctab .onde{display:block;font-size:11.5px;color:var(--ink-3)}
   .aviso{font-size:12.5px;font-weight:600;color:var(--brand);padding-bottom:6px}
   .previa{background:var(--sunk);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--ink-2)}
@@ -1149,39 +1150,65 @@
   // Relatório de vendas por cliente dos convênios (vem acumulado no período, vários dias juntos):
   // um registro por pessoa e período (16 a 15), com o total acumulado; cada relatório novo substitui o anterior.
   const CONVENIOS = ['RAGGA', 'VESPA', 'MEL', 'MARLAY'];
+  // Limite por pessoa no período 16 a 15: valor por dia × dias úteis (segunda a sexta, sem feriado nacional).
+  // MARLAY não tem limite. Amanda Galvão, Luiz Otávio e Marcelo têm R$ 100 por dia; o resto, R$ 35.
+  const LIMITE_DIA = 35, LIMITE_ESPECIAL = 100;
+  const ESPECIAIS = [/^AMANDA GALV[AÃ]O\b/, /^LUIZ OT[AÁ]VIO\b/, /^MARCELO\b/];
+  const FERIADOS = new Set(['2026-11-02', '2026-11-15', '2026-11-20', '2026-12-25', '2027-01-01', '2027-04-02', '2027-04-21', '2027-05-01', '2027-09-07', '2027-10-12', '2027-11-02', '2027-11-15', '2027-11-20', '2027-12-25', '2028-01-01']);
+  const diasUteis = ciclo => {
+    let n = 0;
+    for (let d = new Date(addMonths(ciclo, -1) + '-16T12:00:00'); ; d.setDate(d.getDate() + 1)) {
+      const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      if (iso > ciclo + '-15') break;
+      if (d.getDay() % 6 && !FERIADOS.has(iso)) n++;
+    }
+    return n;
+  };
+  const limiteDia = c => Number(c.limiteDia) || (ESPECIAIS.some(re => re.test(String(c.nome || '').toUpperCase().trim())) ? LIMITE_ESPECIAL : LIMITE_DIA);
   function renderConv() {
     const ciclo = addMonths(state.cur, 1), q = state.vBusca.trim().toLowerCase();
-    $('#vPer').innerHTML = `<span class="dper">Período <b>${esc(cicloNome(ciclo))}</b> · recebimento em ${esc(monthName(ciclo))}</span>`;
+    const du = diasUteis(ciclo);
+    $('#vPer').innerHTML = `<span class="dper">Período <b>${esc(cicloNome(ciclo))}</b> · ${du} dias úteis · limite ${money(LIMITE_DIA * du)} por pessoa (${money(LIMITE_DIA)}/dia)</span>`;
     const rows = [...state.conv.values()].filter(c => c.ciclo === ciclo);
     const grupo = c => CONVENIOS.includes(c.convenio) ? c.convenio : '';
+    const limite = c => grupo(c) === 'MARLAY' ? null : limiteDia(c) * du;
+    const saldo = c => { const l = limite(c); return l == null ? null : l - (Number(c.valor) || 0); };
+    const acima = xs => xs.filter(c => (saldo(c) ?? 0) < -0.005);
+    const excesso = xs => acima(xs).reduce((s, c) => s - saldo(c), 0);
     const soma = xs => xs.reduce((s, c) => s + (Number(c.valor) || 0), 0);
     const tot = soma(rows);
     const ult = rows.map(c => c.atualizadoAte || '').sort().pop();
     const semConv = rows.filter(c => !grupo(c));
+    const nP = n => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`;
+    const subConv = (cv, xs) => !xs.length ? 'sem consumo no período' : cv === 'MARLAY' ? `${nP(xs.length)} · sem limite` : (a => a.length ? `${nP(xs.length)} · <b class="vac">${a.length} acima do limite</b>` : `${nP(xs.length)} · todos dentro do limite`)(acima(xs));
+    const todosAcima = acima(rows);
     $('#vCards').innerHTML = [
-      card('', 'Total convênios', money(tot), `${new Set(rows.map(c => c.cpf || c.nome)).size} pessoas${ult ? ` · até ${fmtDate(ult).slice(0, 5)}` : ''}`),
-      ...CONVENIOS.map(cv => { const xs = rows.filter(c => grupo(c) === cv); return card('', cv, money(soma(xs)), xs.length ? `${xs.length} ${xs.length === 1 ? 'pessoa' : 'pessoas'}` : 'sem consumo no período'); }),
-      ...(semConv.length ? [card('late', 'Sem convênio definido', money(soma(semConv)), `${semConv.length} ${semConv.length === 1 ? 'pessoa' : 'pessoas'} · escolha o convênio na lista`)] : []),
+      card('', 'Total convênios', money(tot), `${nP(new Set(rows.map(c => c.cpf || c.nome)).size)}${ult ? ` · até ${fmtDate(ult).slice(0, 5)}` : ''}`),
+      ...CONVENIOS.map(cv => { const xs = rows.filter(c => grupo(c) === cv); return card('', cv, money(soma(xs)), subConv(cv, xs)); }),
+      ...(semConv.length ? [card('late', 'Sem convênio definido', money(soma(semConv)), `${nP(semConv.length)} · escolha o convênio na lista`)] : []),
+      card(todosAcima.length ? 'late' : 'ok', 'Acima do limite', money(excesso(rows)), todosAcima.length ? `${nP(todosAcima.length)} ${todosAcima.length === 1 ? "passou" : "passaram"} do limite do mês` : 'ninguém passou do limite'),
     ].join('');
     const casa = c => !q || String(c.nome).toLowerCase().includes(q);
     const achados = rows.filter(casa);
-    $('#vSub').textContent = q ? `${money(soma(achados))} · ${achados.length} ${achados.length === 1 ? 'pessoa' : 'pessoas'} com "${state.vBusca.trim()}"` : `${money(tot)} · ${cicloNome(ciclo)}`;
+    $('#vSub').textContent = q ? `${money(soma(achados))} · ${nP(achados.length)} com "${state.vBusca.trim()}"` : `${money(tot)} · ${cicloNome(ciclo)}`;
     const grupos = [...CONVENIOS, ''].filter(g => achados.some(c => grupo(c) === g) || (!q && g));
     $('#vExpand').textContent = grupos.every(g => state.vOpen.has(g)) ? 'fechar todos' : 'abrir todos';
     const ro = state.canWrite ? '' : ' disabled';
-    let html = `<thead><tr><th>Convênio / pessoa</th><th class="r">Compras</th><th class="r">Última compra</th><th class="r">Total acumulado</th><th class="r">% do convênio</th></tr></thead><tbody>`;
-    if (!rows.length) html += `<tr><td colspan="5" class="empty">Nenhum relatório de convênio lançado neste período.</td></tr>`;
-    else if (!achados.length) html += `<tr><td colspan="5" class="empty">Ninguém encontrado para "${esc(state.vBusca)}".</td></tr>`;
+    const celSaldo = c => { const sd = saldo(c); if (sd == null) return '<span class="note">—</span>'; return sd < -0.005 ? `<span class="vac">${money(-sd)} acima</span>` : `<span class="vok">${money(sd)}</span>`; };
+    let html = `<thead><tr><th>Convênio / pessoa</th><th class="r">Compras</th><th class="r">Última compra</th><th class="r">Total acumulado</th><th class="r">Limite do mês</th><th class="r">Saldo</th></tr></thead><tbody>`;
+    if (!rows.length) html += `<tr><td colspan="6" class="empty">Nenhum relatório de convênio lançado neste período.</td></tr>`;
+    else if (!achados.length) html += `<tr><td colspan="6" class="empty">Ninguém encontrado para "${esc(state.vBusca)}".</td></tr>`;
     else grupos.forEach(g => {
       const xs = achados.filter(c => grupo(c) === g).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR', { sensitivity: 'base' }));
-      const v = soma(xs), open = state.vOpen.has(g) || !!q;
-      html += `<tr class="loja-row${open ? ' aberta' : ''}" data-vg="${esc(g)}" tabindex="0" aria-expanded="${open}"><td><span class="seta" aria-hidden="true">${xs.length ? (open ? '▾' : '▸') : ''}</span> <b>${esc(g || 'Sem convênio definido')}</b> <span class="note">· ${xs.length} ${xs.length === 1 ? 'pessoa' : 'pessoas'}</span></td><td class="r">${xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0) || '—'}</td><td></td><td class="r money">${xs.length ? money(v) : '<span class="note">—</span>'}</td><td class="r">${tot && xs.length ? (v / tot * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '% do total' : ''}</td></tr>`;
+      const v = soma(xs), open = state.vOpen.has(g) || !!q, a = acima(xs);
+      html += `<tr class="loja-row${open ? ' aberta' : ''}" data-vg="${esc(g)}" tabindex="0" aria-expanded="${open}"><td><span class="seta" aria-hidden="true">${xs.length ? (open ? '▾' : '▸') : ''}</span> <b>${esc(g || 'Sem convênio definido')}</b> <span class="note">· ${nP(xs.length)}</span></td><td class="r">${xs.reduce((s, c) => s + (Number(c.qtd) || 0), 0) || '—'}</td><td></td><td class="r money">${xs.length ? money(v) : '<span class="note">—</span>'}</td><td class="r">${g === 'MARLAY' ? '<span class="note">sem limite</span>' : ''}</td><td class="r">${a.length ? `<span class="vac">${a.length} acima · ${money(excesso(xs))}</span>` : ''}</td></tr>`;
       if (open) xs.forEach(c => {
         const sel = `<select class="vsel" data-vconv="${esc(c.id)}" aria-label="Convênio de ${esc(c.nome)}"${ro}>${['', ...CONVENIOS].map(o => `<option value="${o}"${o === grupo(c) ? ' selected' : ''}>${o || 'definir…'}</option>`).join('')}</select>`;
-        html += `<tr class="pessoa"><td>${esc(c.nome)} ${sel}${c.filial ? `<span class="onde">${esc(c.filial)}</span>` : ''}</td><td class="r">${Number(c.qtd) || '—'}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${v ? ((Number(c.valor) || 0) / v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : ''}</td></tr>`;
+        const l = limite(c);
+        html += `<tr class="pessoa"><td>${esc(c.nome)} ${sel}${c.filial ? `<span class="onde">${esc(c.filial)}</span>` : ''}</td><td class="r">${Number(c.qtd) || '—'}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${l == null ? '<span class="note">sem limite</span>' : `${money(l)}<span class="onde">${money(limiteDia(c))}/dia</span>`}</td><td class="r">${celSaldo(c)}</td></tr>`;
       });
     });
-    html += `</tbody>${rows.length ? `<tfoot><tr><td>${q ? `Total filtrado · "${esc(state.vBusca.trim())}"` : 'Total'}</td><td class="r">${achados.reduce((s, c) => s + (Number(c.qtd) || 0), 0)}</td><td class="r">${achados.length} ${achados.length === 1 ? 'pessoa' : 'pessoas'}</td><td class="r money">${money(soma(achados))}</td><td class="r">${q ? `de ${money(tot)}` : '100%'}</td></tr></tfoot>` : ''}`;
+    html += `</tbody>${rows.length ? `<tfoot><tr><td>${q ? `Total filtrado · "${esc(state.vBusca.trim())}"` : 'Total'}</td><td class="r">${achados.reduce((s, c) => s + (Number(c.qtd) || 0), 0)}</td><td class="r">${nP(achados.length)}</td><td class="r money">${money(soma(achados))}</td><td class="r">${q ? `de ${money(tot)}` : ''}</td><td class="r">${acima(achados).length ? `${acima(achados).length} acima · ${money(excesso(achados))}` : ''}</td></tr></tfoot>` : ''}`;
     $('#vTab').innerHTML = html;
   }
   document.addEventListener('click', e => {
