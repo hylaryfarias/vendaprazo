@@ -371,7 +371,6 @@
       <div class="shead">
         <div class="esq"><h2>Resumo para WhatsApp</h2><small>relatório D+1 · segunda leva sex + sáb + dom · marque no calendário os dias do texto</small></div>
         <div class="filtros">
-          <select class="busca" id="vDia" aria-label="Atalho de dias do resumo"></select>
           <button class="pick" id="vCopy" type="button">Copiar texto</button>
         </div>
       </div>
@@ -1254,7 +1253,6 @@
   // Texto do dia: consumo do dia e acumulado até ele por convênio, quem passou do limite e quem está perto (80% ou mais).
   // Resumo para WhatsApp: os dias do texto são marcados no calendário do período (16 a 15).
   // O relatório é D+1: sem escolha, vem o último envio — o último dia lançado, e sexta, sábado e domingo juntos (enviados na segunda).
-  // O atalho ao lado do botão marca um envio pronto (um dia sozinho ou sex + sáb + dom).
   function renderConvWpp(ciclo, rows, grupo, limite) {
     const dias = [...new Set(rows.flatMap(c => Object.keys(c.dias || {})))].sort(), tem = new Set(dias);
     const wd = d => SEMANA[new Date(d + 'T12:00:00').getDay()];
@@ -1269,12 +1267,10 @@
       blocos.set(ds[ds.length - 1], ds);
     });
     const chaves = [...blocos.keys()].sort();
-    const nomeBloco = k => { const ds = blocos.get(k); return ds.length === 1 ? `${fmtDate(k).slice(0, 5)} ${wd(k)}` : `${ds.map(wd).join(' + ')} · ${fmtDate(ds[0]).slice(0, 5)} a ${fmtDate(k).slice(0, 5)}`; };
     state.vSel = new Set([...state.vSel].filter(d => tem.has(d)));
     if (!state.vDiaEscolhido) state.vSel = new Set(chaves.length ? blocos.get(chaves[chaves.length - 1]) : []);
-    const B = [...state.vSel].sort(), chaveSel = chaves.find(k => blocos.get(k).join() === B.join());
-    $('#vDia').innerHTML = chaves.length ? (chaveSel ? '' : '<option value="" selected>dias marcados no calendário</option>') + chaves.slice().reverse().map(k => `<option value="${k}"${k === chaveSel ? ' selected' : ''}>${nomeBloco(k)}</option>`).join('') : '<option value="">sem dias</option>';
-    $('#vDia').disabled = $('#vCopy').disabled = !chaves.length;
+    const B = [...state.vSel].sort();
+    $('#vCopy').disabled = !chaves.length;
     // Calendário do período, começando na segunda.
     let cal = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map(w => `<div class="wh">${w}</div>`).join('');
     const off = (new Date(iniCiclo + 'T12:00:00').getDay() + 6) % 7;
@@ -1315,9 +1311,7 @@
     L.push('', '⚠️ *Acima do limite do mês*', ...(acima.length ? acima.map(x => `• ${nomeC(x.c)}: ${money(x.a)} de ${money(x.l)} · ${money(x.a - x.l)} acima`) : ['• Ninguém']));
     L.push('', '🟡 *Perto do limite (80% ou mais)*', ...(perto.length ? perto.map(x => `• ${nomeC(x.c)}: ${money(x.a)} de ${money(x.l)} (${Math.floor(x.a / x.l * 100)}%)`) : ['• Ninguém']));
     $('#vWpp').textContent = L.join('\n');
-    state.vBlocos = blocos;
   }
-  $('#vDia').addEventListener('change', e => { const ds = state.vBlocos?.get(e.target.value); if (ds) { state.vSel = new Set(ds); state.vDiaEscolhido = true; renderConv(); } });
   $('#vCal').addEventListener('click', e => {
     const b = e.target.closest('[data-vcal]');
     if (b && !b.disabled) { const d = b.dataset.vcal; state.vSel.has(d) ? state.vSel.delete(d) : state.vSel.add(d); state.vDiaEscolhido = true; renderConv(); return; }
