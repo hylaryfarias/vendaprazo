@@ -202,6 +202,18 @@
   .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
   .dtab tr.dia-vazio b{font-weight:500}
   .ctab select.vsel{font:inherit;font-size:12px;border:1px solid var(--line-2);border-radius:6px;padding:2px 4px;background:var(--surface);color:var(--ink)}
+  .vwrap{display:grid;grid-template-columns:minmax(260px,320px) 1fr;gap:14px;align-items:start}
+  @media (max-width:760px){.vwrap{grid-template-columns:1fr}}
+  .vcal{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px;display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .vcal .wh{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);text-align:center;padding-bottom:4px}
+  .vcal .vmes{grid-column:1/-1;font-size:12px;font-weight:600;color:var(--ink-2);margin:6px 0 2px}
+  .vcal button{font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:7px;padding:6px 0;cursor:pointer;line-height:1.1}
+  .vcal button small{display:block;font-size:9.5px;color:var(--ink-3);margin-top:2px}
+  .vcal button:hover:not(:disabled){border-color:var(--brand)}
+  .vcal button.on{background:var(--brand);border-color:var(--brand);color:#fff} .vcal button.on small{color:#fff;opacity:.85}
+  .vcal button:disabled{opacity:.35;cursor:default;background:transparent}
+  .vcal .acoes{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+  .vcal .acoes button{border:0;background:none;padding:4px 2px;color:var(--brand);font-size:12px;font-weight:600}
   #vImpOk{max-width:560px;white-space:normal;text-align:right;font-size:12px}
   .ctab tr.vp-row{cursor:pointer} .ctab tr.vp-row:hover td{background:#FBF9F4} .ctab tr.vp-row.aberta td{background:var(--sunk)}
   .ctab tr.vp-row td:first-child{padding-left:22px} .ctab tr.vp-row .seta{width:16px} .ctab tr.vp-row .onde{margin-left:16px}
@@ -357,13 +369,16 @@
     </section>
     <section id="v-wpp">
       <div class="shead">
-        <div class="esq"><h2>Resumo do dia para WhatsApp</h2><small>escolha o dia · segunda sai junto com o fim de semana · acumulado e limites até o último dia do texto</small></div>
+        <div class="esq"><h2>Resumo para WhatsApp</h2><small>relatório D+1 · segunda leva sex + sáb + dom · marque no calendário os dias do texto</small></div>
         <div class="filtros">
-          <select class="busca" id="vDia" aria-label="Dia do resumo"></select>
+          <select class="busca" id="vDia" aria-label="Atalho de dias do resumo"></select>
           <button class="pick" id="vCopy" type="button">Copiar texto</button>
         </div>
       </div>
-      <pre class="wpp" id="vWpp"></pre>
+      <div class="vwrap">
+        <div class="vcal" id="vCal" role="group" aria-label="Dias do resumo"></div>
+        <pre class="wpp" id="vWpp"></pre>
+      </div>
     </section>
   </div>
   </div>
@@ -579,7 +594,7 @@
   };
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', vPOpen: new Set(), vDia: '', dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', vPOpen: new Set(), vSel: new Set(), dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
   try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
   try { const v = localStorage.getItem('b2b.view'); if (['colab', 'diario', 'conv'].includes(v)) state.view = v; } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
@@ -1237,36 +1252,53 @@
     renderConvWpp(ciclo, rows, grupo, limite);
   }
   // Texto do dia: consumo do dia e acumulado até ele por convênio, quem passou do limite e quem está perto (80% ou mais).
-  // Sábado, domingo e segunda saem num texto só (o de segunda), com o consumo de cada dia separado.
+  // Resumo para WhatsApp: os dias do texto são marcados no calendário do período (16 a 15).
+  // O relatório é D+1: sem escolha, vem o último envio — o último dia lançado, e sexta, sábado e domingo juntos (enviados na segunda).
+  // O atalho ao lado do botão marca um envio pronto (um dia sozinho ou sex + sáb + dom).
   function renderConvWpp(ciclo, rows, grupo, limite) {
-    const dias = [...new Set(rows.flatMap(c => Object.keys(c.dias || {})))].sort();
+    const dias = [...new Set(rows.flatMap(c => Object.keys(c.dias || {})))].sort(), tem = new Set(dias);
     const wd = d => SEMANA[new Date(d + 'T12:00:00').getDay()];
     const mais = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`; };
-    const iniCiclo = addMonths(ciclo, -1) + '-16', ultimo = dias[dias.length - 1] || '';
-    // Agrupa os dias com dados em envios: dia útil sozinho; sábado, domingo e segunda juntos.
+    const iniCiclo = addMonths(ciclo, -1) + '-16', fimCiclo = ciclo + '-15', ultimo = dias[dias.length - 1] || '';
     const blocos = new Map();
     dias.forEach(d => {
       const w = new Date(d + 'T12:00:00').getDay();
-      if (w !== 6 && w !== 0 && w !== 1) { blocos.set(d, [d]); return; }
-      const seg = mais(d, w === 6 ? 2 : w === 0 ? 1 : 0);
-      const ds = [mais(seg, -2), mais(seg, -1), seg].filter(x => x >= iniCiclo && x <= ultimo && x <= ciclo + '-15');
+      if (w !== 5 && w !== 6 && w !== 0) { blocos.set(d, [d]); return; }
+      const sex = mais(d, w === 5 ? 0 : w === 6 ? -1 : -2);
+      const ds = [sex, mais(sex, 1), mais(sex, 2)].filter(x => x >= iniCiclo && x <= ultimo && x <= fimCiclo && tem.has(x));
       blocos.set(ds[ds.length - 1], ds);
     });
     const chaves = [...blocos.keys()].sort();
     const nomeBloco = k => { const ds = blocos.get(k); return ds.length === 1 ? `${fmtDate(k).slice(0, 5)} ${wd(k)}` : `${ds.map(wd).join(' + ')} · ${fmtDate(ds[0]).slice(0, 5)} a ${fmtDate(k).slice(0, 5)}`; };
-    if (!state.vDiaEscolhido || !blocos.has(state.vDia)) state.vDia = chaves[chaves.length - 1] || '';
-    $('#vDia').innerHTML = chaves.length ? chaves.slice().reverse().map(k => `<option value="${k}"${k === state.vDia ? ' selected' : ''}>${nomeBloco(k)}</option>`).join('') : '<option value="">sem dias</option>';
+    state.vSel = new Set([...state.vSel].filter(d => tem.has(d)));
+    if (!state.vDiaEscolhido) state.vSel = new Set(chaves.length ? blocos.get(chaves[chaves.length - 1]) : []);
+    const B = [...state.vSel].sort(), chaveSel = chaves.find(k => blocos.get(k).join() === B.join());
+    $('#vDia').innerHTML = chaves.length ? (chaveSel ? '' : '<option value="" selected>dias marcados no calendário</option>') + chaves.slice().reverse().map(k => `<option value="${k}"${k === chaveSel ? ' selected' : ''}>${nomeBloco(k)}</option>`).join('') : '<option value="">sem dias</option>';
     $('#vDia').disabled = $('#vCopy').disabled = !chaves.length;
-    if (!chaves.length) { $('#vWpp').textContent = 'Suba os relatórios de um dia só (botão Importar relatórios) para gerar o resumo diário.'; return; }
-    const D = state.vDia, B = blocos.get(D), varios = B.length > 1;
+    // Calendário do período, começando na segunda.
+    let cal = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map(w => `<div class="wh">${w}</div>`).join('');
+    const off = (new Date(iniCiclo + 'T12:00:00').getDay() + 6) % 7;
+    cal += '<div></div>'.repeat(off);
+    for (let d = iniCiclo; d <= fimCiclo; d = mais(d, 1)) {
+      if (d.slice(8) === '01') { const w = (new Date(d + 'T12:00:00').getDay() + 6) % 7; cal += `<div class="vmes">${esc(monthName(d.slice(0, 7)))}</div>` + '<div></div>'.repeat(w); }
+      const v = rows.reduce((s, c) => s + (Number(c.dias?.[d]?.v) || 0), 0);
+      cal += `<button type="button" data-vcal="${d}" class="${state.vSel.has(d) ? 'on' : ''}"${tem.has(d) ? '' : ' disabled'} aria-pressed="${state.vSel.has(d)}" title="${fmtDate(d)} ${wd(d)}${tem.has(d) ? ' · ' + money(v) : ' · sem relatório'}">${+d.slice(8)}${tem.has(d) ? `<small>${v >= 1000 ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : Math.round(v)}</small>` : ''}</button>`;
+    }
+    cal += `<div class="acoes"><button type="button" class="limpar" data-vcal-ult>último envio</button><button type="button" class="limpar" data-vcal-tudo>todos os dias</button></div>`;
+    $('#vCal').innerHTML = cal;
+    if (!B.length) { $('#vWpp').textContent = dias.length ? 'Marque no calendário os dias que entram no texto.' : 'Suba os relatórios de um dia só (botão Importar relatórios) para gerar o resumo.'; return; }
+    const D = B[B.length - 1], varios = B.length > 1;
+    const seguidos = B.every((d, i) => !i || mais(B[i - 1], 1) === d);
+    const fimDeSemana = varios && seguidos && B.every(d => [5, 6, 0].includes(new Date(d + 'T12:00:00').getDay()));
     const doDia = (c, d) => Number(c.dias?.[d]?.v) || 0;
     const doBloco = c => B.reduce((s, d) => s + doDia(c, d), 0);
     const ate = c => Object.entries(c.dias || {}).reduce((s, [d, x]) => s + (d <= D ? Number(x.v) || 0 : 0), 0);
     const soma = (xs, fn) => xs.reduce((s, c) => s + fn(c), 0);
     const nP = n => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`;
     const pessoasB = rows.filter(c => doBloco(c));
+    const quando = seguidos ? `${fmtDate(B[0]).slice(0, 5)} a ${fmtDate(D).slice(0, 5)}` : B.map(d => fmtDate(d).slice(0, 5)).join(', ');
     const L = varios
-      ? ['📊 *RESUMO DO FIM DE SEMANA · CONSUMO CONVÊNIOS*', `*${B.map(wd).join(' + ')} · ${fmtDate(B[0]).slice(0, 5)} a ${fmtDate(D).slice(0, 5)}*`, '', `Consumo no período: *${money(soma(rows, doBloco))}* · ${nP(pessoasB.length)}`,
+      ? [`📊 *${fimDeSemana ? 'RESUMO DO FIM DE SEMANA' : 'RESUMO DO PERÍODO'} · CONSUMO CONVÊNIOS*`, `*${fimDeSemana ? B.map(wd).join(' + ') + ' · ' : ''}${quando}*`, '', `Consumo no período: *${money(soma(rows, doBloco))}* · ${nP(pessoasB.length)}`,
          ...B.map(d => { const v = soma(rows, c => doDia(c, d)); return `• ${wd(d)} ${fmtDate(d).slice(0, 5)}: ${v ? money(v) : '—'}`; })]
       : ['📊 *RESUMO DIÁRIO · CONSUMO CONVÊNIOS*', `*${fmtDate(D).slice(0, 5)} (${wd(D)})*`, '', `Consumo do dia: *${money(soma(rows, doBloco))}* · ${nP(pessoasB.length)}`];
     L.push(`Acumulado ${fmtDate(iniCiclo).slice(0, 5)} a ${fmtDate(D).slice(0, 5)}: *${money(soma(rows, ate))}*`, '');
@@ -1283,8 +1315,15 @@
     L.push('', '⚠️ *Acima do limite do mês*', ...(acima.length ? acima.map(x => `• ${nomeC(x.c)}: ${money(x.a)} de ${money(x.l)} · ${money(x.a - x.l)} acima`) : ['• Ninguém']));
     L.push('', '🟡 *Perto do limite (80% ou mais)*', ...(perto.length ? perto.map(x => `• ${nomeC(x.c)}: ${money(x.a)} de ${money(x.l)} (${Math.floor(x.a / x.l * 100)}%)`) : ['• Ninguém']));
     $('#vWpp').textContent = L.join('\n');
+    state.vBlocos = blocos;
   }
-  $('#vDia').addEventListener('change', e => { state.vDia = e.target.value; state.vDiaEscolhido = true; renderConv(); });
+  $('#vDia').addEventListener('change', e => { const ds = state.vBlocos?.get(e.target.value); if (ds) { state.vSel = new Set(ds); state.vDiaEscolhido = true; renderConv(); } });
+  $('#vCal').addEventListener('click', e => {
+    const b = e.target.closest('[data-vcal]');
+    if (b && !b.disabled) { const d = b.dataset.vcal; state.vSel.has(d) ? state.vSel.delete(d) : state.vSel.add(d); state.vDiaEscolhido = true; renderConv(); return; }
+    if (e.target.closest('[data-vcal-ult]')) { state.vDiaEscolhido = false; renderConv(); return; }
+    if (e.target.closest('[data-vcal-tudo]')) { state.vSel = new Set([...e.currentTarget.querySelectorAll('[data-vcal]:not(:disabled)')].map(x => x.dataset.vcal)); state.vDiaEscolhido = true; renderConv(); }
+  });
   $('#vCopy').addEventListener('click', async () => {
     const b = $('#vCopy');
     try { await navigator.clipboard.writeText($('#vWpp').textContent); b.textContent = 'Copiado!'; }
