@@ -202,6 +202,7 @@
   .dtab tr.dia-vazio td{color:var(--ink-3);padding-top:7px;padding-bottom:7px}
   .dtab tr.dia-vazio b{font-weight:500}
   .ctab select.vsel{font:inherit;font-size:12px;border:1px solid var(--line-2);border-radius:6px;padding:2px 4px;background:var(--surface);color:var(--ink)}
+  #vImpOk{max-width:560px;white-space:normal;text-align:right;font-size:12px}
   .ctab tr.vp-row{cursor:pointer} .ctab tr.vp-row:hover td{background:#FBF9F4} .ctab tr.vp-row.aberta td{background:var(--sunk)}
   .ctab tr.vp-row td:first-child{padding-left:22px} .ctab tr.vp-row .seta{width:16px} .ctab tr.vp-row .onde{margin-left:16px}
   .ctab tr.vdia td{font-size:12.5px;color:var(--ink-2);padding-top:6px;padding-bottom:6px;background:#FBF9F4}
@@ -339,8 +340,8 @@
       <div class="filtros">
         <span class="note" id="vImpOk" aria-live="polite"></span>
         <button class="neutro" id="vExport" type="button" hidden>Exportar</button>
-        <button class="pick" id="vImp" type="button" data-write>Importar relatório (.xlsx)</button>
-        <input id="vArq" type="file" accept=".xlsx,.xls,.csv" hidden>
+        <button class="pick" id="vImp" type="button" data-write>Importar relatórios (.xlsx)</button>
+        <input id="vArq" type="file" accept=".xlsx,.xls,.csv" multiple hidden>
       </div>
     </div>
     <div class="totais" id="vCards"></div>
@@ -353,6 +354,16 @@
         </div>
       </div>
       <div class="tbox"><div class="tablewrap"><table class="ctab" id="vTab"></table></div></div>
+    </section>
+    <section id="v-wpp">
+      <div class="shead">
+        <div class="esq"><h2>Resumo do dia para WhatsApp</h2><small>escolha o dia · o acumulado e os limites são até o dia escolhido</small></div>
+        <div class="filtros">
+          <select class="busca" id="vDia" aria-label="Dia do resumo"></select>
+          <button class="pick" id="vCopy" type="button">Copiar texto</button>
+        </div>
+      </div>
+      <pre class="wpp" id="vWpp"></pre>
     </section>
   </div>
   </div>
@@ -568,7 +579,7 @@
   };
 
   // ---------- state ----------
-  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', vPOpen: new Set(), dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
+  const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', vPOpen: new Set(), vDia: '', dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
   try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
   try { const v = localStorage.getItem('b2b.view'); if (['colab', 'diario', 'conv'].includes(v)) state.view = v; } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
@@ -1223,7 +1234,44 @@
     });
     html += `</tbody>${rows.length ? `<tfoot><tr><td>${q ? `Total filtrado · "${esc(state.vBusca.trim())}"` : 'Total'}</td><td></td><td class="r">${nP(achados.length)}</td><td class="r money">${money(soma(achados))}</td><td class="r">${q ? `de ${money(tot)}` : ''}</td><td class="r">${acima(achados).length ? `${acima(achados).length} acima · ${money(excesso(achados))}` : ''}</td></tr></tfoot>` : ''}`;
     $('#vTab').innerHTML = html;
+    renderConvWpp(ciclo, rows, grupo, limite);
   }
+  // Texto do dia: consumo do dia e acumulado até ele por convênio, quem passou do limite e quem está perto (80% ou mais).
+  function renderConvWpp(ciclo, rows, grupo, limite) {
+    const dias = [...new Set(rows.flatMap(c => Object.keys(c.dias || {})))].sort();
+    const wd = d => SEMANA[new Date(d + 'T12:00:00').getDay()];
+    if (!state.vDiaEscolhido || !dias.includes(state.vDia)) state.vDia = dias[dias.length - 1] || '';
+    $('#vDia').innerHTML = dias.length ? dias.slice().reverse().map(d => `<option value="${d}"${d === state.vDia ? ' selected' : ''}>${fmtDate(d).slice(0, 5)} ${wd(d)}</option>`).join('') : '<option value="">sem dias</option>';
+    $('#vDia').disabled = $('#vCopy').disabled = !dias.length;
+    if (!dias.length) { $('#vWpp').textContent = 'Suba os relatórios de um dia só (botão Importar relatórios) para gerar o resumo diário.'; return; }
+    const D = state.vDia;
+    const doDia = c => Number(c.dias?.[D]?.v) || 0;
+    const ate = c => Object.entries(c.dias || {}).reduce((s, [d, x]) => s + (d <= D ? Number(x.v) || 0 : 0), 0);
+    const soma = (xs, fn) => xs.reduce((s, c) => s + fn(c), 0);
+    const ini = fmtDate(addMonths(ciclo, -1) + '-16').slice(0, 5);
+    const pessoasDia = rows.filter(c => doDia(c));
+    const L = [`*Convênios · ${fmtDate(D).slice(0, 5)} (${wd(D)})*`, `Consumo do dia: *${money(soma(rows, doDia))}* · ${pessoasDia.length} ${pessoasDia.length === 1 ? 'pessoa' : 'pessoas'}`, `Acumulado ${ini} a ${fmtDate(D).slice(0, 5)}: *${money(soma(rows, ate))}*`, ''];
+    [...CONVENIOS, ''].forEach(g => {
+      const xs = rows.filter(c => grupo(c) === g), d = soma(xs, doDia), a = soma(xs, ate);
+      if (!g && !a) return;
+      L.push(`*${g || 'Sem convênio'}* · dia ${d ? money(d) : '—'} · acum. ${a ? money(a) : '—'}`);
+    });
+    const comLim = rows.filter(c => limite(c) != null && ate(c) > 0).map(c => ({ c, a: ate(c), l: limite(c) }));
+    const porNome = (x, y) => String(x.c.nome).localeCompare(String(y.c.nome), 'pt-BR', { sensitivity: 'base' });
+    const acima = comLim.filter(x => x.a - x.l > 0.005).sort(porNome);
+    const perto = comLim.filter(x => x.a - x.l <= 0.005 && x.a >= x.l * 0.8).sort(porNome);
+    const nomeC = c => `${c.nome} (${grupo(c) || 'sem convênio'})`;
+    L.push('', '⚠️ *Acima do limite do mês*', ...(acima.length ? acima.map(x => `• ${nomeC(x.c)}: ${money(x.a)} de ${money(x.l)} · ${money(x.a - x.l)} acima`) : ['• Ninguém']));
+    L.push('', '🟡 *Perto do limite (80% ou mais)*', ...(perto.length ? perto.map(x => `• ${nomeC(x.c)}: ${money(x.a)} de ${money(x.l)} (${Math.floor(x.a / x.l * 100)}%)`) : ['• Ninguém']));
+    $('#vWpp').textContent = L.join('\n');
+  }
+  $('#vDia').addEventListener('change', e => { state.vDia = e.target.value; state.vDiaEscolhido = true; renderConv(); });
+  $('#vCopy').addEventListener('click', async () => {
+    const b = $('#vCopy');
+    try { await navigator.clipboard.writeText($('#vWpp').textContent); b.textContent = 'Copiado!'; }
+    catch { const r = document.createRange(); r.selectNodeContents($('#vWpp')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); b.textContent = 'Selecionado: Ctrl+C'; }
+    setTimeout(() => { b.textContent = 'Copiar texto'; }, 2000);
+  });
   document.addEventListener('click', e => {
     const vp = e.target.closest('[data-vp]');
     if (vp && !e.target.closest('select')) { const k = vp.dataset.vp; state.vPOpen.has(k) ? state.vPOpen.delete(k) : state.vPOpen.add(k); renderConv(); return; }
@@ -1310,13 +1358,9 @@
   // Pode vir com vários dias: soma tudo por pessoa (CPF) e grava o acumulado do período 16 a 15.
   // Cada importação substitui o total de quem está no arquivo; o convênio já escolhido para a pessoa é mantido.
   $('#vImp').addEventListener('click', () => $('#vArq').click());
-  $('#vArq').addEventListener('change', async e => {
-    const f = e.target.files[0]; e.target.value = '';
-    if (!f) return;
-    const ok = $('#vImpOk');
-    if (!window.XLSX) { toast('O leitor de planilha não carregou. Recarregue a página e tente de novo.'); return; }
-    try {
-      ok.textContent = 'Lendo o arquivo…';
+  // Aceita vários arquivos de uma vez: cada um é lido e gravado em sequência; o dia de cada um vem da coluna "Última compra".
+  // "mem" guarda o que já foi gravado neste lote, para um arquivo enxergar os dias que o anterior acabou de lançar.
+  async function lerConv(f) {
       const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
       const linhas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
       const limpa = v => String(v ?? '').replace(/^="?|"$/g, '').trim();
@@ -1346,15 +1390,18 @@
       if (!pessoas.length) throw new Error('O arquivo não tem nenhuma pessoa.');
       const datas = pessoas.map(([, p]) => p.ultima).filter(Boolean).sort();
       if (!datas.length) throw new Error('Não consegui ler as datas da coluna Última compra.');
+      return { f, P, pessoas, diasArq, datas };
+  }
+  async function importarConv({ f, P, pessoas, diasArq, datas }, mem, ok, pre) {
       const ate = datas[datas.length - 1], ciclo = cicloDe(ate);
       if (cicloDe(datas[0]) !== ciclo) throw new Error(`O arquivo mistura dois períodos (${fmtDate(datas[0])} a ${fmtDate(ate)}). Exporte só de 16 a 15.`);
       // Convênio de cada pessoa: o já escolhido neste período, senão o de um período anterior, senão a empresa na lista de colaboradores.
       const so = c => String(c || '').replace(/\D/g, '');
-      const ant = {}; [...state.conv.values()].sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo))).forEach(c => { if (c.convenio && so(c.cpf)) ant[so(c.cpf)] = c.convenio; });
+      const ant = {}; [...mem.values()].sort((a, b) => String(a.ciclo).localeCompare(String(b.ciclo))).forEach(c => { if (c.convenio && so(c.cpf)) ant[so(c.cpf)] = c.convenio; });
       const emp = {}; [...state.colab.values()].sort((a, b) => String(a.mes).localeCompare(String(b.mes))).forEach(c => { if (CONVENIOS.includes(c.empresa) && so(c.cpf)) emp[so(c.cpf)] = c.empresa; });
       const agora = new Date().toISOString(), tag = ciclo.replace('-', '');
       const r2 = v => Math.round(v * 100) / 100;
-      const doCiclo = [...state.conv.values()].filter(c => c.ciclo === ciclo);
+      const doCiclo = [...mem.values()].filter(c => c.ciclo === ciclo);
       let feitos = 0, tot = 0;
       if (diasArq.size === 1) {
         // Relatório de um dia só: grava o dia dentro de cada pessoa (substitui o mesmo dia se subir de novo)
@@ -1367,48 +1414,66 @@
         };
         const ids = new Set();
         for (const [k, p] of pessoas) {
-          const id = `cv${tag}-${k}`, atual = state.conv.get(id); ids.add(id);
+          const id = `cv${tag}-${k}`, atual = mem.get(id); ids.add(id);
           const convenio = atual ? (atual.convenio || '') : (ant[so(p.cpf)] || emp[so(p.cpf)] || '');
           const dias = { ...((atual && atual.dias) || {}) };
           const l = {}; Object.entries(p.fil).forEach(([n, v]) => { l[n] = r2(v); });
           dias[D] = { v: r2(p.valor), q: p.qtd, l };
-          await state.db.doc('convenio/' + id).set({ ciclo, convenio, nome: p.nome, cpf: p.cpf, cod: p.cod, dias, ...somaDias(dias), fonte: f.name, atualizadoEm: agora });
-          tot += p.valor; ok.textContent = `Importando ${++feitos}/${pessoas.length}…`;
+          const doc = { ciclo, convenio, nome: p.nome, cpf: p.cpf, cod: p.cod, dias, ...somaDias(dias), fonte: f.name, atualizadoEm: agora };
+          await state.db.doc('convenio/' + id).set(doc); mem.set(id, { id, ...doc });
+          tot += p.valor; ok.textContent = `${pre}Importando ${fmtDate(D).slice(0, 5)}: ${++feitos}/${pessoas.length}…`;
         }
         // Quem tinha esse dia e não está no arquivo novo perde o dia; quem só tinha o acumulado antigo (sem dias) recomeça do zero.
         for (const c of doCiclo.filter(c => !ids.has(c.id) && (!c.dias || c.dias[D]))) {
           const dias = { ...(c.dias || {}) }; delete dias[D];
           const { id, ...resto } = c;
-          await state.db.doc('convenio/' + id).set({ ...resto, dias, ...somaDias(dias), atualizadoEm: agora });
+          const doc = { ...resto, dias, ...somaDias(dias), atualizadoEm: agora };
+          await state.db.doc('convenio/' + id).set(doc); mem.set(id, { id, ...doc });
         }
-        const mesCard = addMonths(ciclo, -1);
-        if (state.months.has(mesCard) && state.cur !== mesCard) { state.cur = mesCard; render(); }
-        ok.textContent = `${fmtDate(D).slice(0, 5)} ${SEMANA[new Date(D + 'T12:00:00').getDay()]} · ${pessoas.length} pessoas · ${money(tot)}`;
-        toast(`Dia ${fmtDate(D).slice(0, 5)} importado`);
-        return;
+        return { ciclo, txt: `${fmtDate(D).slice(0, 5)} ${SEMANA[new Date(D + 'T12:00:00').getDay()]} ${money(tot)}` };
       }
       if (doCiclo.some(c => c.dias && Object.keys(c.dias).length))
         throw new Error(`Este arquivo tem vários dias (${fmtDate(datas[0]).slice(0, 5)} a ${fmtDate(ate).slice(0, 5)}). Como o período já tem abertura por dia, suba um relatório por dia.`);
       for (const [k, p] of pessoas) {
-        const id = `cv${tag}-${k}`, atual = state.conv.get(id);
+        const id = `cv${tag}-${k}`, atual = mem.get(id);
         const convenio = atual ? (atual.convenio || '') : (ant[so(p.cpf)] || emp[so(p.cpf)] || '');
-        await state.db.doc('convenio/' + id).set({
+        const doc = {
           ciclo, convenio, nome: p.nome, cpf: p.cpf, cod: p.cod,
           filial: Object.keys(p.fil).sort((a, b) => p.fil[b] - p.fil[a]).join(', '),
           valor: Math.round(p.valor * 100) / 100, qtd: p.qtd, ultima: p.ultima, atualizadoAte: ate,
           fonte: `${f.name} · até ${fmtDate(ate)}`, atualizadoEm: agora,
-        });
-        tot += p.valor; ok.textContent = `Importando ${++feitos}/${pessoas.length}…`;
+        };
+        await state.db.doc('convenio/' + id).set(doc); mem.set(id, { id, ...doc });
+        tot += p.valor; ok.textContent = `${pre}Importando ${++feitos}/${pessoas.length}…`;
       }
-      const mesCard = addMonths(ciclo, -1);
-      if (state.months.has(mesCard) && state.cur !== mesCard) { state.cur = mesCard; render(); }
-      ok.textContent = `${pessoas.length} pessoas · ${money(tot)} · ${cicloNome(ciclo)} até ${fmtDate(ate).slice(0, 5)}`;
-      toast('Relatório dos convênios importado');
-    } catch (err) {
-      ok.textContent = '';
-      toast(err?.message && !/permission|denied/i.test(err.message) ? err.message : 'Não foi possível importar o relatório');
+      return { ciclo, txt: `${fmtDate(datas[0]).slice(0, 5)} a ${fmtDate(ate).slice(0, 5)} (acumulado) ${money(tot)}` };
+  }
+  $('#vArq').addEventListener('change', async e => {
+    const fs = [...e.target.files].sort((a, b) => a.name.localeCompare(b.name)); e.target.value = '';
+    if (!fs.length) return;
+    const ok = $('#vImpOk');
+    if (!window.XLSX) { toast('O leitor de planilha não carregou. Recarregue a página e tente de novo.'); return; }
+    state.vDiaEscolhido = false;
+    const mem = new Map([...state.conv.entries()].map(([k, v]) => [k, { ...v }]));
+    const feitos = [], falhas = [];
+    let ciclo = null;
+    const msgErr = err => err?.message && !/permission|denied/i.test(err.message) ? err.message : 'não foi possível importar';
+    // Lê todos antes e grava em ordem de data: relatórios de um dia primeiro, do mais antigo ao mais recente.
+    const lidos = [];
+    for (const f of fs) {
+      ok.textContent = `Lendo ${f.name}…`;
+      try { lidos.push(await lerConv(f)); } catch (err) { falhas.push(`${f.name}: ${msgErr(err)}`); }
     }
+    lidos.sort((a, b) => (a.diasArq.size > 1) - (b.diasArq.size > 1) || a.datas[a.datas.length - 1].localeCompare(b.datas[b.datas.length - 1]));
+    for (const [n, x] of lidos.entries()) {
+      try { const r = await importarConv(x, mem, ok, lidos.length > 1 ? `${n + 1}/${lidos.length} · ` : ''); feitos.push(r.txt); ciclo = r.ciclo; }
+      catch (err) { falhas.push(`${x.f.name}: ${msgErr(err)}`); }
+    }
+    if (ciclo) { const mesCard = addMonths(ciclo, -1); if (state.months.has(mesCard) && state.cur !== mesCard) { state.cur = mesCard; render(); } }
+    ok.textContent = [feitos.length ? `Importado: ${feitos.join(' · ')}` : '', falhas.length ? `Não importado (${falhas.length}): ${falhas.join(' | ')}` : ''].filter(Boolean).join(' — ');
+    toast(falhas.length ? `${feitos.length} importado(s), ${falhas.length} com problema — veja ao lado do botão` : feitos.length === 1 ? 'Relatório importado' : `${feitos.length} relatórios importados`);
   });
+
 
   function setView(v) {
     state.view = v;
