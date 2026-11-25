@@ -1235,7 +1235,7 @@
       if (open) xs.forEach(c => {
         const sel = `<select class="vsel" data-vconv="${esc(c.id)}" aria-label="Convênio de ${esc(c.nome)}"${ro}>${['', ...CONVENIOS].map(o => `<option value="${o}"${o === grupo(c) ? ' selected' : ''}>${o || 'definir…'}</option>`).join('')}</select>`;
         const l = limite(c), ds = Object.keys(c.dias || {}).sort(), po = ds.length && state.vPOpen.has(c.id);
-        html += `<tr class="pessoa${ds.length ? ' vp-row' : ''}${po ? ' aberta' : ''}"${ds.length ? ` data-vp="${esc(c.id)}" tabindex="0" aria-expanded="${!!po}" title="Clique para ver dia a dia"` : ''}><td><span class="seta" aria-hidden="true">${ds.length ? (po ? '▾' : '▸') : ''}</span>${esc(c.nome)}</td><td>${sel}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r">${l == null ? '<span class="note">sem limite</span>' : `${money(l)}<span class="onde">${money(limiteDia(c))}/dia</span>`}</td><td class="r">${celSaldo(c)}</td></tr>`;
+        html += `<tr class="pessoa${ds.length ? ' vp-row' : ''}${po ? ' aberta' : ''}"${ds.length ? ` data-vp="${esc(c.id)}" tabindex="0" aria-expanded="${!!po}" title="Clique para ver dia a dia"` : ''}><td><span class="seta" aria-hidden="true">${ds.length ? (po ? '▾' : '▸') : ''}</span>${esc(c.nome)}</td><td>${sel}</td><td class="r">${c.ultima ? fmtDate(c.ultima).slice(0, 5) : '—'}</td><td class="r money">${money(c.valor)}</td><td class="r" style="white-space:nowrap">${l == null ? '<span class="note">sem limite</span>' : `<span class="note">${money(limiteDia(c))}/dia ·</span> ${money(l)}`}</td><td class="r">${celSaldo(c)}</td></tr>`;
         if (po) {
           let ac = 0;
           ds.forEach(d => {
