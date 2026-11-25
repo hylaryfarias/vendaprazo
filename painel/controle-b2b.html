@@ -1430,7 +1430,7 @@
       };
       const P = {}, diasArq = new Set();
       linhas.slice(hi + 1).forEach(r => {
-        const nome = limpa(r[C.nome]); if (!nome) return;
+        const nome = limpa(r[C.nome]).toLocaleUpperCase('pt-BR'); if (!nome) return;
         const cpf = limpa(r[C.cpf]), k = cpf.replace(/\D/g, '') || nome.toUpperCase().replace(/[^0-9A-Z]/g, '');
         const p = (P[k] ||= { nome, cpf, cod: limpa(r[C.cod]), fil: {}, valor: 0, qtd: 0, ultima: '' });
         const fil = limpa(r[C.fil]).replace(/BIGG'S/i, 'BIGGS'), v = num(r[C.val]);
@@ -1971,7 +1971,8 @@
       render();
     }, fail);
     db.collection('convenio').onSnapshot(snap => {
-      state.conv = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+      // Nomes dos convênios sempre em maiúsculas (na tela, no texto do WhatsApp e no Excel).
+      state.conv = new Map(snap.docs.map(d => { const x = d.data(); return [d.id, { id: d.id, ...x, nome: String(x.nome || '').toLocaleUpperCase('pt-BR') }]; }));
       render();
     }, fail);
     db.collection('colab').onSnapshot(snap => {
