@@ -594,7 +594,7 @@
   // ---------- state ----------
   const state = { db: null, canWrite: true, months: new Map(), lancs: new Map(), cur: null, filter: { mensal: 'todos', semanal: 'todos' }, q: { mensal: '', semanal: '' }, sort: { mensal: null, semanal: null }, colf: { mensal: {}, semanal: {} }, gotMonths: false, gotLancs: false, colab: new Map(), view: 'b2b', cOpen: new Set(), cBusca: '', diario: new Map(), conv: new Map(), vOpen: new Set(['RAGGA', 'VESPA', 'MEL', 'MARLAY', '']), vBusca: '', vPOpen: new Set(), vSel: new Set(), dMes: null, dOpen: new Set(), dLojaOpen: new Set(), dBusca: '', cLancQ: '', cLancOpen: true };
   try { if (localStorage.getItem('b2b.clanc') === '0') state.cLancOpen = false; } catch {}
-  try { const v = localStorage.getItem('b2b.view'); if (['colab', 'conv'].includes(v)) state.view = v; // a aba Acompanhamento diário foi removida } catch {}
+  try { const v = localStorage.getItem('b2b.view'); if (['colab', 'conv'].includes(v)) state.view = v; /* a aba Acompanhamento diário foi removida */ } catch {}
   try { const f = JSON.parse(localStorage.getItem('b2b.filters') || 'null'); if (f) state.filter = Object.assign(state.filter, f); } catch {}
   try { const t = JSON.parse(localStorage.getItem('b2b.cols') || 'null'); if (t) { Object.assign(state.sort, t.sort); Object.assign(state.colf, t.colf); } } catch {}
   const saveCols = () => { try { localStorage.setItem('b2b.cols', JSON.stringify({ sort: state.sort, colf: state.colf })); } catch {} };
